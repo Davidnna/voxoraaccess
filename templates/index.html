@@ -1,1 +1,43 @@
-{% extends "base.html" %}{% block title %}Explore learning resources{% endblock %}{% block content %}<section class="hero"><div><p class="eyebrow">A more accessible way to learn</p><h1>Knowledge should move at <em>your</em> pace.</h1><p class="lede">Find learning materials, listen to extracted text, and keep useful resources together in one accessible space.</p><div class="actions"><a class="btn primary" href="#resources">Explore resources</a>{% if current_user %}<a class="btn outline" href="{{url_for('upload')}}">Upload a resource</a>{% else %}<a class="btn outline" href="{{url_for('register')}}">Get started</a>{% endif %}</div><p class="muted">Designed with visually impaired university students in mind.</p></div><div class="art" aria-hidden="true"><div class="ring"></div><div class="book"><span></span><span></span><i></i></div><div class="wave"><b></b><b></b><b></b><b></b><b></b><b></b><b></b></div><small>LISTEN · LEARN · EXPLORE</small></div></section><section id="resources" class="section-title"><div><p class="eyebrow">Open knowledge</p><h2>Explore resources</h2><p class="muted">Browse publicly shared learning materials.</p></div><form class="search"><label class="sr" for="q">Search resources</label><input id="q" name="q" value="{{query}}" placeholder="Search by title or topic"><button class="btn primary">Search</button></form></section>{% if resources %}<div class="grid">{% for r in resources %}<article class="card"><div class="cardtop"><span class="file">{{r.extension|upper}}</span><span class="public">Public</span></div><h3><a href="{{url_for('detail',rid=r.id)}}">{{r.title}}</a></h3><p>{{r.description or "A learning resource shared with the Voxora Access community."}}</p><div class="meta"><span>Shared by {{r.owner_name}}</span><span>{{(r.size_bytes/1024)|round|int}} KB</span></div><a class="link" href="{{url_for('detail',rid=r.id)}}">Open resource →</a></article>{% endfor %}</div>{% else %}<div class="empty"><h3>No resources found yet</h3><p>{% if query %}Try another search term.{% else %}Be the first to share a learning resource.{% endif %}</p>{% if current_user %}<a class="btn primary" href="{{url_for('upload')}}">Upload a resource</a>{% else %}<a class="btn primary" href="{{url_for('register')}}">Create an account</a>{% endif %}</div>{% endif %}<section class="banner"><div class="music">♫</div><div><h2>Choose how you access information</h2><p>Use browser speech controls to listen to extracted text. Keyboard navigation and clear focus indicators are built in.</p></div><a class="btn gold" href="{{url_for('accessibility')}}">Accessibility features</a></section>{% endblock %}
+{% extends "base.html" %}
+{% block title %}An accessible space to learn{% endblock %}
+{% block content %}
+<section class="hero marketing-hero">
+    <div class="hero-copy">
+        <p class="eyebrow">A more accessible way to learn</p>
+        <h1>Make room for <em>every way</em> of learning.</h1>
+        <p class="lede">Discover study materials, keep useful resources together and listen to extracted document text—all in one student-focused learning space.</p>
+        <div class="actions">
+            <a class="btn primary" href="#resources">Explore resources</a>
+            {% if current_user %}
+                <a class="btn outline" href="{{ url_for('dashboard') }}">Go to dashboard</a>
+            {% else %}
+                <a class="btn outline" href="{{ url_for('register') }}">Create your free account</a>
+            {% endif %}
+        </div>
+        <p class="muted">Designed with visually impaired university students in mind, and useful to anyone who prefers flexible ways to access learning materials.</p>
+    </div>
+    <div class="art" aria-hidden="true"><div class="ring"></div><div class="book"><span></span><span></span><i></i></div><div class="wave"><b></b><b></b><b></b><b></b><b></b><b></b><b></b></div><small>LISTEN · LEARN · EXPLORE</small></div>
+</section>
+<section class="value-strip" aria-label="Platform principles">
+    <div><span>01</span><b>Discover resources</b><p>Browse publicly shared study materials.</p></div>
+    <div><span>02</span><b>Make it personal</b><p>Save useful materials in your library.</p></div>
+    <div><span>03</span><b>Choose how to read</b><p>Use the reading view and supported browser speech.</p></div>
+</section>
+<section class="section-block">
+    <div class="section-heading"><p class="eyebrow">A learning space with purpose</p><h2>More than a place to store files.</h2><p>Voxora Access brings discovery, personal organization and accessible reading tools into one experience.</p></div>
+    <div class="feature-grid">
+        <article class="feature-card"><span class="feature-number">01</span><h3>Find what you need</h3><p>Search public learning resources by title, description or extracted text.</p><a href="{{ url_for('how_it_works') }}">See how discovery works →</a></article>
+        <article class="feature-card"><span class="feature-number">02</span><h3>Build your own library</h3><p>Save references to resources and return to them without creating duplicate uploads.</p><a href="{{ url_for('register') }}">Create your library →</a></article>
+        <article class="feature-card"><span class="feature-number">03</span><h3>Listen as you learn</h3><p>Where your browser supports it, read extracted text aloud and adjust playback speed.</p><a href="{{ url_for('accessibility') }}">Explore accessibility →</a></article>
+    </div>
+</section>
+<section class="split-promo">
+    <div><p class="eyebrow">Your own learning workspace</p><h2>A dashboard that keeps your resources in reach.</h2><p>After signing in, manage your uploads, revisit saved materials and see resources shared with your account from a dedicated student dashboard.</p><a class="btn primary" href="{{ url_for('register') }}">Get started</a></div>
+    <div class="dashboard-preview" aria-hidden="true"><div class="preview-sidebar"><i></i><i></i><i></i><i></i></div><div class="preview-main"><span></span><span></span><div><i></i><i></i><i></i></div><b></b><b></b></div></div>
+</section>
+<section id="resources" class="section-title"><div><p class="eyebrow">Open knowledge</p><h2>Explore public resources</h2><p class="muted">Browse materials that contributors have chosen to make public.</p></div><form class="search" role="search"><label class="sr" for="q">Search resources</label><input id="q" name="q" value="{{ query }}" placeholder="Search by title or topic"><button class="btn primary" type="submit">Search</button></form></section>
+{% if resources %}
+<div class="grid">{% for r in resources %}<article class="card"><span class="file">{{ r.extension|upper }}</span><h3><a href="{{ url_for('detail', rid=r.id) }}">{{ r.title }}</a></h3><p>{{ r.description or "A shared learning resource." }}</p><small>Shared by {{ r.owner_name }}</small><a class="link" href="{{ url_for('detail', rid=r.id) }}">View resource →</a></article>{% endfor %}</div>
+{% else %}<div class="empty"><h2>{% if query %}No matching resources{% else %}The resource shelf is ready{% endif %}</h2><p>{% if query %}Try a different search term.{% else %}Public resources will appear here as the community shares learning materials.{% endif %}</p></div>{% endif %}
+<section class="closing-cta"><p class="eyebrow">Knowledge within everyone's reach</p><h2>Make your next study session work for you.</h2><a class="btn primary" href="{{ url_for('register') }}">Join Voxora Access</a></section>
+{% endblock %}
