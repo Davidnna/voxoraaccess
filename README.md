@@ -1,9 +1,9 @@
-# Voxora
+# Voxora Access
 
 **Knowledge within everyone's reach.**  
 *Listen. Learn. Explore. Achieve.*
 
-Voxora is a Flask-based learning-resource sharing prototype designed with visually impaired university students in mind. It provides account registration, public and private learning resources, account-to-account sharing, a personal library, document text extraction, and browser-based read-aloud controls.
+Voxora Access is a Flask-based learning-resource sharing prototype designed with visually impaired university students in mind. It provides account registration, public and private learning resources, account-to-account sharing, a personal library, document text extraction, and browser-based read-aloud controls.
 
 ## Features
 
