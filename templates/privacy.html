@@ -1,39 +1,21 @@
-{% extends "base.html" %}{% block title %}Privacy notice{% endblock %}{% block
-content %}
-<section class="intro">
-    <p class="eyebrow">Clear by design</p>
-    <h1>Privacy notice</h1>
-    <p>Draft notice for this prototype. Review before launch.</p>
-</section>
-<article class="policy">
-    <h2>Information stored</h2>
-    <p>
-        Voxora Access stores submitted name and email, password hash, resource
-        metadata and uploads, extracted text where available, library references
-        and sharing relationships.
-    </p>
-    <h2>Public and private resources</h2>
-    <p>
-        Public resources can be discovered by visitors. Private resources are
-        intended for their owner and explicitly shared accounts. Do not upload
-        sensitive or copyrighted materials without permission.
-    </p>
-    <h2>Processing</h2>
-    <p>
-        Text extraction runs locally using installed Python libraries when
-        available. Browser speech synthesis behaviour and processing depend on
-        browser and operating system.
-    </p>
-    <h2>Retention and security</h2>
-    <p>
-        Owners can delete uploaded resources. Account deletion, self-service
-        export and defined retention procedures are not implemented. This
-        prototype is not security audited. Configure HTTPS, backups, monitoring,
-        malware scanning and a contact address before launch.
-    </p>
-    <p>
-        <b>This is not legal advice or a compliance certification.</b> Tailor
-        the notice to actual hosting and applicable law.
-    </p>
+{% extends "base.html" %}
+{% block title %}Privacy notice{% endblock %}
+{% block content %}
+<article class="policy-page">
+    <p class="eyebrow">Platform policies</p><h1>Privacy notice</h1><p class="muted">Last updated: 31 October 2026</p>
+    <p>This notice explains how Voxora Access handles information when you browse the platform, create an account, upload resources or use sharing and reading features.</p>
+    <p class="policy-note"><b>Operator details must be completed before public launch.</b> The operator should add its legal name, contact address, privacy contact and the actual hosting/provider details. This draft is based on the current application code and is not a legal compliance certification.</p>
+    <h2>1. Information collected</h2>
+    <ul><li><b>Account information:</b> name, email address, password hash and account creation timestamp.</li><li><b>Resource information:</b> title, description, original filename, file type, MIME type, file size, visibility setting, upload timestamp and a SHA-256 file digest.</li><li><b>Uploaded content:</b> file bytes and extracted text where extraction is supported.</li><li><b>Library and sharing information:</b> saved resource references, resource ownership and the account identifiers involved in private sharing.</li><li><b>Session and security information:</b> session cookie contents and form security token used to maintain sign-in and protect form submissions.</li></ul>
+    <h2>2. How information is used</h2><p>Information is used to create and authenticate accounts, store and display resources, search public materials, enforce resource access permissions, provide library and sharing features, prevent some duplicate uploads, protect forms and operate the service.</p>
+    <h2>3. Public and private resources</h2><p>Public resources are discoverable by visitors and their displayed details and extracted text may be searchable. Private resources are intended for the owner and accounts the owner explicitly shares them with. Choose visibility carefully. Do not upload confidential, sensitive or personal information unless you have authority and understand the consequences.</p>
+    <h2>4. Storage and service providers</h2><p>The current application stores account data, resource metadata, extracted text and uploaded file bytes in a PostgreSQL database. The project is configured for a hosted PostgreSQL service and Render web hosting. Hosting, database and infrastructure providers may process information to provide their services. The operator should identify the actual providers, locations, contractual safeguards and any international transfers before launch.</p>
+    <h2>5. Passwords and security</h2><p>Passwords are stored as password hashes rather than plain text. The application configures HTTP-only and SameSite=Lax session cookies and supports the Secure cookie flag when HTTPS is enabled. No online service can guarantee absolute security. This prototype has not been independently security audited and does not currently provide account deletion, self-service data export, password reset or malware scanning.</p>
+    <h2>6. Cookies and browser speech</h2><p>The application uses an essential session cookie for sign-in and session security. See the <a href="{{ url_for('cookies') }}">Cookie Notice</a>. The reading view uses browser speech synthesis when supported; available voices and processing are controlled by the browser and operating system.</p>
+    <h2>7. Retention and deletion</h2><p>Uploaded resources can be deleted by their owners through the application. Account deletion and a self-service retention schedule are not currently implemented. Database backups and provider-level retention may persist for periods determined by the operator and providers. The operator must document and apply an appropriate retention and deletion process before public launch.</p>
+    <h2>8. Your choices and privacy requests</h2><p>You can choose whether a resource is public or private, remove saved library references and delete resources you own. For access, correction, deletion or other privacy requests, contact the platform operator using the <a href="{{ url_for('contact') }}">Contact page</a>. The operator must publish a monitored privacy contact before launch and respond in accordance with applicable law.</p>
+    <h2>9. Children and educational use</h2><p>The platform is designed for university learning use. It is not designed as a service for children. Do not submit another person's information unless you have an appropriate lawful basis or authorization.</p>
+    <h2>10. Changes</h2><p>This notice may change as the platform's features, providers and data practices change. The current version and its update date will be published here.</p>
+    <p><b>Important:</b> The operator should have this notice reviewed against the Nigeria Data Protection Act 2023 and any other laws that apply to its actual operations before opening the platform to the public.</p>
 </article>
 {% endblock %}
