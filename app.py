@@ -523,25 +523,43 @@ def accessibility():
     return render_template("accessibility.html")
 
 
-
 @app.route("/dashboard")
 @login_required
 def dashboard():
     uid = user()["id"]
     stats = {
-        "uploads": db().execute("SELECT COUNT(*) AS total FROM resources WHERE owner_id=%s", (uid,)).fetchone()["total"],
-        "public": db().execute("SELECT COUNT(*) AS total FROM resources WHERE owner_id=%s AND visibility='public'", (uid,)).fetchone()["total"],
-        "saved": db().execute("SELECT COUNT(*) AS total FROM library WHERE user_id=%s", (uid,)).fetchone()["total"],
-        "shared": db().execute("SELECT COUNT(*) AS total FROM shares WHERE user_id=%s", (uid,)).fetchone()["total"],
+        "uploads": db()
+        .execute("SELECT COUNT(*) AS total FROM resources WHERE owner_id=%s", (uid,))
+        .fetchone()["total"],
+        "public": db()
+        .execute(
+            "SELECT COUNT(*) AS total FROM resources WHERE owner_id=%s AND visibility='public'",
+            (uid,),
+        )
+        .fetchone()["total"],
+        "saved": db()
+        .execute("SELECT COUNT(*) AS total FROM library WHERE user_id=%s", (uid,))
+        .fetchone()["total"],
+        "shared": db()
+        .execute("SELECT COUNT(*) AS total FROM shares WHERE user_id=%s", (uid,))
+        .fetchone()["total"],
     }
-    recent = db().execute(
-        "SELECT id,title,extension,visibility,created_at FROM resources WHERE owner_id=%s ORDER BY created_at DESC LIMIT 5",
-        (uid,),
-    ).fetchall()
-    saved = db().execute(
-        "SELECT r.id,r.title,r.extension FROM library l JOIN resources r ON r.id=l.resource_id WHERE l.user_id=%s ORDER BY l.created_at DESC LIMIT 5",
-        (uid,),
-    ).fetchall()
+    recent = (
+        db()
+        .execute(
+            "SELECT id,title,extension,visibility,created_at FROM resources WHERE owner_id=%s ORDER BY created_at DESC LIMIT 5",
+            (uid,),
+        )
+        .fetchall()
+    )
+    saved = (
+        db()
+        .execute(
+            "SELECT r.id,r.title,r.extension FROM library l JOIN resources r ON r.id=l.resource_id WHERE l.user_id=%s ORDER BY l.created_at DESC LIMIT 5",
+            (uid,),
+        )
+        .fetchall()
+    )
     return render_template("dashboard.html", stats=stats, recent=recent, saved=saved)
 
 
