@@ -262,7 +262,7 @@ def register():
         session.clear()
         session["uid"] = uid
         flash("Welcome to Voxora Access. Your account is ready.", "success")
-        return redirect(url_for("index"))
+        return redirect(url_for("dashboard"))
     return render_template("auth.html", mode="register")
 
 
@@ -282,7 +282,7 @@ def signin():
         return redirect(
             dest
             if dest.startswith("/") and not dest.startswith("//")
-            else url_for("index")
+            else url_for("dashboard")
         )
     return render_template("auth.html", mode="signin")
 
