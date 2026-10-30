@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: voxora
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn --workers 2 --threads 4 --timeout 120 --bind 0.0.0.0:$PORT app:app
+    healthCheckPath: /
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.8
+      - key: VOXORA_HTTPS
+        value: "1"
+      - key: VOXORA_MAX_UPLOAD_MB
+        value: "20"
+      - key: VOXORA_SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false
