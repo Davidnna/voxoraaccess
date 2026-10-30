@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Cookie notice{% endblock %}
+{% block content %}
+<article class="policy-page">
+    <p class="eyebrow">Platform policies</p><h1>Cookie notice</h1><p class="muted">Last updated: 31 October 2026</p>
+    <p>This notice explains the browser storage used by the current Voxora Access application.</p>
+    <p class="policy-note"><b>Current implementation:</b> The Flask application uses a session cookie to maintain sign-in state and a CSRF token in the session to protect form submissions. This prototype does not currently describe or provide an analytics or advertising-cookie consent interface.</p>
+    <h2>Essential session cookie</h2><p>The application uses Flask's session mechanism to remember that you are signed in and to maintain security-related session information. The cookie is configured as HTTP-only and SameSite=Lax; the Secure flag is enabled when the application is configured for HTTPS.</p>
+    <h2>Browser speech features</h2><p>The reading view uses the browser's built-in speech synthesis interface when available. Speech voices and processing are controlled by the browser and operating system. This feature is not described as a cookie.</p>
+    <h2>Managing cookies</h2><p>You can use your browser settings to inspect, block or delete cookies. Blocking essential session cookies may prevent sign-in and other account features from working properly.</p>
+    <h2>Changes</h2><p>If analytics, embedded third-party services or other non-essential storage are added, this notice and any required consent controls should be updated before those technologies are enabled.</p>
+</article>
+{% endblock %}
