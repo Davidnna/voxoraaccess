@@ -1,46 +1,14 @@
-{% extends "base.html" %}{% block title %}Accessibility{% endblock %}{% block
-content %}
-<section class="intro">
-    <p class="eyebrow">Built to be usable</p>
-    <h1>Accessibility at Voxora Access</h1>
-    <p>
-        Voxora Access aims to make learning resources easier to find, navigate
-        and listen to.
-    </p>
-</section>
-<div class="features">
-    <article class="panel">
-        <h2>Keyboard access</h2>
-        <p>
-            Use keyboard navigation, a skip link and visible focus indicators.
-        </p>
-    </article>
-    <article class="panel">
-        <h2>Speech output</h2>
-        <p>
-            Where supported, use the reading view and browser speech synthesis.
-        </p>
-    </article>
-    <article class="panel">
-        <h2>Readable layout</h2>
-        <p>
-            Semantic headings, labels, responsive spacing and reduced-motion
-            support.
-        </p>
-    </article>
-    <article class="panel">
-        <h2>Known limitations</h2>
-        <p>
-            Extraction may omit diagrams, equations and reading order. Scanned
-            PDFs need OCR.
-        </p>
-    </article>
-</div>
-<section class="panel">
-    <p>
-        This prototype has not been independently audited or certified against
-        WCAG. Test with keyboard navigation, screen readers, magnification and
-        real course materials.
-    </p>
+{% extends "base.html" %}
+{% block title %}Accessibility at Voxora Access{% endblock %}
+{% block content %}
+<section class="public-page">
+    <p class="eyebrow">Accessibility</p><h1>Learning should work with the way you access information.</h1>
+    <p class="lede">Voxora Access is designed with visually impaired university students in mind. We aim to make learning resources easier to discover, navigate and listen to.</p>
+    <div class="feature-grid" style="margin-top:42px">
+        <article class="feature-card"><span class="feature-number">NAVIGATION</span><h3>Keyboard-friendly structure</h3><p>Pages include semantic landmarks, labelled controls, a skip link and visible focus styles to support keyboard navigation.</p></article>
+        <article class="feature-card"><span class="feature-number">READING</span><h3>Listen to extracted text</h3><p>The reading view can use browser speech synthesis, with playback controls and a speed setting where supported.</p></article>
+        <article class="feature-card"><span class="feature-number">PRESENTATION</span><h3>Readable layouts</h3><p>Responsive layouts, clear headings and contrast-aware colours help make the interface easier to use across screen sizes.</p></article>
+    </div>
+    <section class="section-block"><h2>Known limitations</h2><ul><li>Speech voices, language support and playback behaviour vary by browser, device and operating system.</li><li>Extracted text may omit images, diagrams, equations, complex tables or original reading order.</li><li>Scanned PDFs may not contain machine-readable text and may require OCR.</li><li>Some document formats are accepted for storage but do not currently have text extraction implemented.</li></ul><p class="policy-note">Voxora Access has not been independently audited or certified against WCAG. Do not assume every page or uploaded document is fully accessible.</p><h2>Tell us about an accessibility barrier</h2><p>If you encounter a barrier, please contact the platform operator with the page, task, assistive technology and browser/device details if you can share them. See our <a href="{{ url_for('contact') }}">Contact page</a>.</p></section>
 </section>
 {% endblock %}
