@@ -24,7 +24,10 @@ class HybridRow(dict):
         return super().__getitem__(key)
 
 def hybrid_row_factory(cursor):
-    names=[column.name for column in cursor.description]
+    # PostgreSQL DDL/command statements (e.g. CREATE TABLE) have no result columns.
+    # psycopg still asks the row factory for a callable, so handle a missing description.
+    description = cursor.description
+    names = [column.name for column in description] if description is not None else []
     def make_row(values): return HybridRow(zip(names, values))
     return make_row
 
