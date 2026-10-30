@@ -523,6 +523,63 @@ def accessibility():
     return render_template("accessibility.html")
 
 
+
+@app.route("/dashboard")
+@login_required
+def dashboard():
+    uid = user()["id"]
+    stats = {
+        "uploads": db().execute("SELECT COUNT(*) AS total FROM resources WHERE owner_id=%s", (uid,)).fetchone()["total"],
+        "public": db().execute("SELECT COUNT(*) AS total FROM resources WHERE owner_id=%s AND visibility='public'", (uid,)).fetchone()["total"],
+        "saved": db().execute("SELECT COUNT(*) AS total FROM library WHERE user_id=%s", (uid,)).fetchone()["total"],
+        "shared": db().execute("SELECT COUNT(*) AS total FROM shares WHERE user_id=%s", (uid,)).fetchone()["total"],
+    }
+    recent = db().execute(
+        "SELECT id,title,extension,visibility,created_at FROM resources WHERE owner_id=%s ORDER BY created_at DESC LIMIT 5",
+        (uid,),
+    ).fetchall()
+    saved = db().execute(
+        "SELECT r.id,r.title,r.extension FROM library l JOIN resources r ON r.id=l.resource_id WHERE l.user_id=%s ORDER BY l.created_at DESC LIMIT 5",
+        (uid,),
+    ).fetchall()
+    return render_template("dashboard.html", stats=stats, recent=recent, saved=saved)
+
+
+@app.route("/about")
+def about():
+    return render_template("about.html")
+
+
+@app.route("/how-it-works")
+def how_it_works():
+    return render_template("how_it_works.html")
+
+
+@app.route("/terms")
+def terms():
+    return render_template("terms.html")
+
+
+@app.route("/cookies")
+def cookies():
+    return render_template("cookies.html")
+
+
+@app.route("/acceptable-use")
+def acceptable_use():
+    return render_template("acceptable_use.html")
+
+
+@app.route("/copyright")
+def copyright():
+    return render_template("copyright.html")
+
+
+@app.route("/contact")
+def contact():
+    return render_template("contact.html")
+
+
 @app.errorhandler(413)
 def too_large(e):
     flash(f"Files must be {MAX_MB} MB or smaller.", "error")
