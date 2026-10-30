@@ -30,20 +30,23 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install Python formatter
-        run: python -m pip install --upgrade black
+      - name: Install Python formatters
+        run: python -m pip install --upgrade black djlint
 
       - name: Format Python files
         run: black --line-length 88 .
+
+      - name: Format Jinja templates
+        run: djlint templates --reformat --indent 4 --profile=jinja
 
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
           node-version: "22"
 
-      - name: Format web and configuration files
+      - name: Format styles, scripts and documentation
         run: |
-          npx --yes prettier@3 --write "**/*.{html,css,js,json,yml,yaml,md}" --ignore-path .gitignore
+          npx --yes prettier@3 --write "**/*.{css,js,json,yml,yaml,md}" --ignore-path .gitignore
 
       - name: Commit formatting changes
         uses: stefanzweifel/git-auto-commit-action@v5
