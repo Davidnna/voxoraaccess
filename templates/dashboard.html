@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Student dashboard{% endblock %}
+{% block content %}
+<div class="dashboard-shell">
+    <aside class="dashboard-sidebar" aria-label="Dashboard menu">
+        <p>Your workspace</p>
+        <nav>
+            <a href="{{ url_for('dashboard') }}" aria-current="page">Overview</a>
+            <a href="{{ url_for('index') }}">Explore resources</a>
+            <a href="{{ url_for('library_page') }}">My Library</a>
+            <a href="{{ url_for('my_resources') }}">My uploads</a>
+            <a href="{{ url_for('shared_page') }}">Shared with me</a>
+            <a href="{{ url_for('preferences') }}">Preferences</a>
+        </nav>
+        <p>Platform</p>
+        <nav><a href="{{ url_for('accessibility') }}">Accessibility help</a><a href="{{ url_for('contact') }}">Contact</a></nav>
+    </aside>
+    <section class="dashboard-content">
+        <div class="dashboard-welcome">
+            <div><p class="eyebrow">Your learning space</p><h1>Welcome back, {{ current_user.name.split(' ')[0] }}.</h1><p class="muted">Pick up where you left off or add something new to your library.</p></div>
+            <a class="btn primary" href="{{ url_for('upload') }}">＋ Upload a resource</a>
+        </div>
+        <div class="dashboard-stats" aria-label="Your activity summary">
+            <div class="dashboard-stat"><span>Your uploads</span><strong>{{ stats.uploads }}</strong></div>
+            <div class="dashboard-stat"><span>Public resources</span><strong>{{ stats.public }}</strong></div>
+            <div class="dashboard-stat"><span>Saved in library</span><strong>{{ stats.saved }}</strong></div>
+            <div class="dashboard-stat"><span>Shared with you</span><strong>{{ stats.shared }}</strong></div>
+        </div>
+        <div class="dashboard-panels">
+            <section class="dashboard-panel">
+                <h2>Your recent uploads</h2>
+                {% if recent %}
+                    <div class="list">{% for item in recent %}<article class="listrow"><span class="file">{{ item.extension|upper }}</span><div><h2><a href="{{ url_for('detail', rid=item.id) }}">{{ item.title }}</a></h2><p>{{ item.visibility|capitalize }} resource</p></div><a class="link" href="{{ url_for('detail', rid=item.id) }}">Open →</a></article>{% endfor %}</div>
+                {% else %}
+                    <div class="dashboard-empty"><p>You haven't uploaded a resource yet.</p><a href="{{ url_for('upload') }}">Add your first resource →</a></div>
+                {% endif %}
+                <p><a href="{{ url_for('my_resources') }}">Manage all uploads →</a></p>
+            </section>
+            <section class="dashboard-panel">
+                <h2>Saved for later</h2>
+                {% if saved %}
+                    <div class="list">{% for item in saved %}<article class="listrow"><span class="file">{{ item.extension|upper }}</span><div><h2><a href="{{ url_for('detail', rid=item.id) }}">{{ item.title }}</a></h2></div></article>{% endfor %}</div>
+                {% else %}
+                    <div class="dashboard-empty"><p>Your library is waiting for its first resource.</p><a href="{{ url_for('index') }}">Explore public resources →</a></div>
+                {% endif %}
+                <p><a href="{{ url_for('library_page') }}">Open My Library →</a></p>
+            </section>
+        </div>
+        <section class="dashboard-panel" style="margin-top:18px">
+            <h2>Quick actions</h2>
+            <div class="dashboard-actions"><a class="btn outline" href="{{ url_for('index') }}">Find learning materials</a><a class="btn outline" href="{{ url_for('shared_page') }}">View shared resources</a><a class="btn outline" href="{{ url_for('preferences') }}">Reading preferences</a></div>
+        </section>
+    </section>
+</div>
+{% endblock %}
