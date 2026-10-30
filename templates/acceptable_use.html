@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Acceptable use policy{% endblock %}
+{% block content %}
+<article class="policy-page">
+    <p class="eyebrow">Platform policies</p><h1>Acceptable use policy</h1><p class="muted">Last updated: 31 October 2026</p>
+    <p>Voxora Access is intended to support learning and resource sharing. Everyone using the platform must act lawfully, respectfully and in a way that protects other users.</p>
+    <h2>You may not use the platform to</h2>
+    <ul><li>Upload or share materials you do not have permission to distribute.</li><li>Distribute malware, malicious links or files intended to damage systems or compromise accounts.</li><li>Harass, threaten, discriminate against, exploit or impersonate another person.</li><li>Publish another person's private, confidential or personal information without lawful authority.</li><li>Attempt to access private resources, accounts, systems or data without authorization.</li><li>Interfere with platform availability, probe for vulnerabilities without permission, or bypass security controls.</li><li>Use the service for fraud, unlawful activity or any purpose that violates applicable law.</li></ul>
+    <h2>Uploading responsibly</h2><p>Check the content and permissions before uploading. Select public visibility only when you intend the material to be discoverable. Private sharing is limited to the accounts you select, but you should not treat the service as a secure vault for highly sensitive information.</p>
+    <h2>Reports and enforcement</h2><p>Reports may be reviewed and content or accounts may be restricted where reasonably necessary. Include the resource link, a description of the concern and any relevant supporting information when contacting the platform operator.</p>
+    <h2>Related policies</h2><p>Read the <a href="{{ url_for('terms') }}">Terms of Use</a>, <a href="{{ url_for('privacy') }}">Privacy Notice</a> and <a href="{{ url_for('copyright') }}">Copyright page</a>.</p>
+</article>
+{% endblock %}
