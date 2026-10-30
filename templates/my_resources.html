@@ -1,1 +1,28 @@
-{% extends "base.html" %}{% block title %}My resources{% endblock %}{% block content %}<section class="intro"><p class="eyebrow">Your contributions</p><h1>My resources</h1><p>Manage resources you've uploaded.</p><a class="btn primary" href="{{url_for('upload')}}">Upload resource</a></section>{% if resources %}<div class="list">{% for r in resources %}<article class="listrow"><span class="file">{{r.extension|upper}}</span><div><h2><a href="{{url_for('detail',rid=r.id)}}">{{r.title}}</a></h2><p>{{r.description or "No description"}}</p></div><span class="public">{{r.visibility|capitalize}}</span><a class="link" href="{{url_for('detail',rid=r.id)}}">Manage →</a></article>{% endfor %}</div>{% else %}<div class="empty"><h2>No uploads yet</h2><a class="btn primary" href="{{url_for('upload')}}">Upload resource</a></div>{% endif %}{% endblock %}
+{% extends "base.html" %}{% block title %}My resources{% endblock %}{% block
+content %}
+<section class="intro">
+    <p class="eyebrow">Your contributions</p>
+    <h1>My resources</h1>
+    <p>Manage resources you've uploaded.</p>
+    <a class="btn primary" href="{{url_for('upload')}}">Upload resource</a>
+</section>
+{% if resources %}
+<div class="list">
+    {% for r in resources %}
+    <article class="listrow">
+        <span class="file">{{r.extension|upper}}</span>
+        <div>
+            <h2><a href="{{url_for('detail',rid=r.id)}}">{{r.title}}</a></h2>
+            <p>{{r.description or "No description"}}</p>
+        </div>
+        <span class="public">{{r.visibility|capitalize}}</span
+        ><a class="link" href="{{url_for('detail',rid=r.id)}}">Manage →</a>
+    </article>
+    {% endfor %}
+</div>
+{% else %}
+<div class="empty">
+    <h2>No uploads yet</h2>
+    <a class="btn primary" href="{{url_for('upload')}}">Upload resource</a>
+</div>
+{% endif %}{% endblock %}

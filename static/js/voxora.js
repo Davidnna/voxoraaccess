@@ -1,1 +1,99 @@
-(()=>{"use strict";const $=id=>document.getElementById(id),start=$("speak");if(!start)return;const pause=$("pause"),resume=$("resume"),stop=$("stop"),rate=$("rate"),out=$("rateout"),status=$("speech-status");let text="";try{text=JSON.parse($("reader-content").textContent||'""')}catch(e){}let parts=[],i=0,paused=false;const synth=window.speechSynthesis;const msg=s=>status.textContent=s;const controls=on=>{pause.disabled=!on;resume.disabled=!on;stop.disabled=!on};const stopAll=()=>{if(synth)synth.cancel();parts=[];i=0;paused=false;controls(false);start.disabled=!text.trim();msg("Reading stopped.")};function next(){if(!synth||paused)return;if(i>=parts.length){controls(false);start.disabled=!text.trim();msg("Finished reading.");return}const u=new SpeechSynthesisUtterance(parts[i++]);u.rate=Number(rate.value||1);u.onend=()=>{if(!paused)next()};u.onerror=()=>{controls(false);start.disabled=!text.trim();msg("Speech playback stopped by the browser.")};synth.speak(u)}start.addEventListener("click",()=>{if(!("speechSynthesis"in window)||!text.trim()){msg("Speech synthesis is unavailable, or this document has no extracted text.");return}synth.cancel();parts=(text.match(/[^.!?;\\n]+[.!?;]?(?:\\n+|$)/g)||[text]).map(x=>x.trim()).filter(Boolean);i=0;paused=false;start.disabled=true;controls(true);msg("Reading started.");next()});pause.addEventListener("click",()=>{if(synth&&synth.speaking){synth.pause();paused=true;msg("Reading paused.")}});resume.addEventListener("click",()=>{if(synth&&paused){paused=false;synth.resume();msg("Reading resumed.")}});stop.addEventListener("click",stopAll);rate.addEventListener("input",()=>{out.value=Number(rate.value).toFixed(1)+"×";out.textContent=out.value});window.addEventListener("pagehide",()=>{if(synth)synth.cancel()});if(!("speechSynthesis"in window)){start.disabled=true;msg("Speech synthesis is not supported in this browser.")}})();
+(() => {
+    "use strict";
+    const $ = (id) => document.getElementById(id),
+        start = $("speak");
+    if (!start) return;
+    const pause = $("pause"),
+        resume = $("resume"),
+        stop = $("stop"),
+        rate = $("rate"),
+        out = $("rateout"),
+        status = $("speech-status");
+    let text = "";
+    try {
+        text = JSON.parse($("reader-content").textContent || '""');
+    } catch (e) {}
+    let parts = [],
+        i = 0,
+        paused = false;
+    const synth = window.speechSynthesis;
+    const msg = (s) => (status.textContent = s);
+    const controls = (on) => {
+        pause.disabled = !on;
+        resume.disabled = !on;
+        stop.disabled = !on;
+    };
+    const stopAll = () => {
+        if (synth) synth.cancel();
+        parts = [];
+        i = 0;
+        paused = false;
+        controls(false);
+        start.disabled = !text.trim();
+        msg("Reading stopped.");
+    };
+    function next() {
+        if (!synth || paused) return;
+        if (i >= parts.length) {
+            controls(false);
+            start.disabled = !text.trim();
+            msg("Finished reading.");
+            return;
+        }
+        const u = new SpeechSynthesisUtterance(parts[i++]);
+        u.rate = Number(rate.value || 1);
+        u.onend = () => {
+            if (!paused) next();
+        };
+        u.onerror = () => {
+            controls(false);
+            start.disabled = !text.trim();
+            msg("Speech playback stopped by the browser.");
+        };
+        synth.speak(u);
+    }
+    start.addEventListener("click", () => {
+        if (!("speechSynthesis" in window) || !text.trim()) {
+            msg(
+                "Speech synthesis is unavailable, or this document has no extracted text.",
+            );
+            return;
+        }
+        synth.cancel();
+        parts = (text.match(/[^.!?;\\n]+[.!?;]?(?:\\n+|$)/g) || [text])
+            .map((x) => x.trim())
+            .filter(Boolean);
+        i = 0;
+        paused = false;
+        start.disabled = true;
+        controls(true);
+        msg("Reading started.");
+        next();
+    });
+    pause.addEventListener("click", () => {
+        if (synth && synth.speaking) {
+            synth.pause();
+            paused = true;
+            msg("Reading paused.");
+        }
+    });
+    resume.addEventListener("click", () => {
+        if (synth && paused) {
+            paused = false;
+            synth.resume();
+            msg("Reading resumed.");
+        }
+    });
+    stop.addEventListener("click", stopAll);
+    rate.addEventListener("input", () => {
+        out.value = Number(rate.value).toFixed(1) + "×";
+        out.textContent = out.value;
+    });
+    window.addEventListener("pagehide", () => {
+        if (synth) synth.cancel();
+    });
+    if (!("speechSynthesis" in window)) {
+        start.disabled = true;
+        msg("Speech synthesis is not supported in this browser.");
+    }
+})();

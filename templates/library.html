@@ -1,1 +1,29 @@
-{% extends "base.html" %}{% block title %}My Library{% endblock %}{% block content %}<section class="intro"><p class="eyebrow">Saved for later</p><h1>My Library</h1><p>Saved items point to the original file rather than making a duplicate.</p></section>{% if resources %}<div class="grid">{% for r in resources %}<article class="card"><span class="file">{{r.extension|upper}}</span><h3><a href="{{url_for('detail',rid=r.id)}}">{{r.title}}</a></h3><p>{{r.description or "Saved learning resource."}}</p><a class="link" href="{{url_for('detail',rid=r.id)}}">Open resource →</a></article>{% endfor %}</div>{% else %}<div class="empty"><h2>Your library is ready</h2><p>Open a resource and select “Add / remove My Library”.</p><a class="btn primary" href="{{url_for('index')}}">Explore resources</a></div>{% endif %}{% endblock %}
+{% extends "base.html" %}{% block title %}My Library{% endblock %}{% block
+content %}
+<section class="intro">
+    <p class="eyebrow">Saved for later</p>
+    <h1>My Library</h1>
+    <p>
+        Saved items point to the original file rather than making a duplicate.
+    </p>
+</section>
+{% if resources %}
+<div class="grid">
+    {% for r in resources %}
+    <article class="card">
+        <span class="file">{{r.extension|upper}}</span>
+        <h3><a href="{{url_for('detail',rid=r.id)}}">{{r.title}}</a></h3>
+        <p>{{r.description or "Saved learning resource."}}</p>
+        <a class="link" href="{{url_for('detail',rid=r.id)}}"
+            >Open resource →</a
+        >
+    </article>
+    {% endfor %}
+</div>
+{% else %}
+<div class="empty">
+    <h2>Your library is ready</h2>
+    <p>Open a resource and select “Add / remove My Library”.</p>
+    <a class="btn primary" href="{{url_for('index')}}">Explore resources</a>
+</div>
+{% endif %}{% endblock %}

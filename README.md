@@ -1,7 +1,7 @@
 # Voxora Access
 
 **Knowledge within everyone's reach.**  
-*Listen. Learn. Explore. Achieve.*
+_Listen. Learn. Explore. Achieve._
 
 Voxora Access is a Flask-based learning-resource sharing prototype designed with visually impaired university students in mind. It provides account registration, public and private learning resources, account-to-account sharing, a personal library, document text extraction, and browser-based read-aloud controls.
 
@@ -26,10 +26,10 @@ PDF, DOCX, PPTX, TXT, MD, RTF and CSV are accepted by the upload validator. ODT,
 2. Create and activate a virtual environment.
 3. Install dependencies with `pip install -r requirements.txt`.
 4. Set environment variables:
-   - `DATABASE_URL`: Neon PostgreSQL connection string; use the pooled URL if desired.
-   - `VOXORA_SECRET_KEY`: long, random secret.
-   - `VOXORA_MAX_UPLOAD_MB`: upload limit (default 20).
-   - `VOXORA_HTTPS`: set to `1` when served over HTTPS.
+    - `DATABASE_URL`: Neon PostgreSQL connection string; use the pooled URL if desired.
+    - `VOXORA_SECRET_KEY`: long, random secret.
+    - `VOXORA_MAX_UPLOAD_MB`: upload limit (default 20).
+    - `VOXORA_HTTPS`: set to `1` when served over HTTPS.
 5. Start with `flask --app app run`.
 
 The application creates its database tables on startup.

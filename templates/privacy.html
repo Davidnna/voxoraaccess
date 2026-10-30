@@ -1,1 +1,39 @@
-{% extends "base.html" %}{% block title %}Privacy notice{% endblock %}{% block content %}<section class="intro"><p class="eyebrow">Clear by design</p><h1>Privacy notice</h1><p>Draft notice for this prototype. Review before launch.</p></section><article class="policy"><h2>Information stored</h2><p>Voxora Access stores submitted name and email, password hash, resource metadata and uploads, extracted text where available, library references and sharing relationships.</p><h2>Public and private resources</h2><p>Public resources can be discovered by visitors. Private resources are intended for their owner and explicitly shared accounts. Do not upload sensitive or copyrighted materials without permission.</p><h2>Processing</h2><p>Text extraction runs locally using installed Python libraries when available. Browser speech synthesis behaviour and processing depend on browser and operating system.</p><h2>Retention and security</h2><p>Owners can delete uploaded resources. Account deletion, self-service export and defined retention procedures are not implemented. This prototype is not security audited. Configure HTTPS, backups, monitoring, malware scanning and a contact address before launch.</p><p><b>This is not legal advice or a compliance certification.</b> Tailor the notice to actual hosting and applicable law.</p></article>{% endblock %}
+{% extends "base.html" %}{% block title %}Privacy notice{% endblock %}{% block
+content %}
+<section class="intro">
+    <p class="eyebrow">Clear by design</p>
+    <h1>Privacy notice</h1>
+    <p>Draft notice for this prototype. Review before launch.</p>
+</section>
+<article class="policy">
+    <h2>Information stored</h2>
+    <p>
+        Voxora Access stores submitted name and email, password hash, resource
+        metadata and uploads, extracted text where available, library references
+        and sharing relationships.
+    </p>
+    <h2>Public and private resources</h2>
+    <p>
+        Public resources can be discovered by visitors. Private resources are
+        intended for their owner and explicitly shared accounts. Do not upload
+        sensitive or copyrighted materials without permission.
+    </p>
+    <h2>Processing</h2>
+    <p>
+        Text extraction runs locally using installed Python libraries when
+        available. Browser speech synthesis behaviour and processing depend on
+        browser and operating system.
+    </p>
+    <h2>Retention and security</h2>
+    <p>
+        Owners can delete uploaded resources. Account deletion, self-service
+        export and defined retention procedures are not implemented. This
+        prototype is not security audited. Configure HTTPS, backups, monitoring,
+        malware scanning and a contact address before launch.
+    </p>
+    <p>
+        <b>This is not legal advice or a compliance certification.</b> Tailor
+        the notice to actual hosting and applicable law.
+    </p>
+</article>
+{% endblock %}
