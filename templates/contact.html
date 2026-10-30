@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Contact Voxora Access{% endblock %}
+{% block content %}
+<section class="public-page">
+    <p class="eyebrow">We're listening</p><h1>Contact Voxora Access</h1>
+    <p class="lede">Questions about using the platform, accessibility barriers, privacy concerns or a resource rights report should have a clear route to the platform operator.</p>
+    <div class="policy-page" style="margin-left:0;margin-right:0">
+        <p class="policy-note"><b>Operator contact details need to be completed before public launch.</b> Configure and publish a monitored support email address and the legal name and address of the platform operator. Do not rely on an unmonitored inbox for privacy or copyright reports.</p>
+        <h2>What to include</h2><ul><li>For technical support: the page you were using, what happened and the browser/device involved.</li><li>For accessibility feedback: the task you were trying to complete and the barrier you encountered.</li><li>For privacy requests: the account email and the nature of your request. Do not send passwords.</li><li>For copyright reports: the resource link and the information listed on our <a href="{{ url_for('copyright') }}">copyright page</a>.</li></ul>
+        <p>For information about how account and resource information is handled, read the <a href="{{ url_for('privacy') }}">Privacy Notice</a>.</p>
+    </div>
+</section>
+{% endblock %}
