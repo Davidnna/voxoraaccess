@@ -131,7 +131,7 @@ def register():
    flash("An account with that email already exists.","error")
    return render_template("auth.html",mode="register")
   uid=db().execute("SELECT id FROM users WHERE email=%s",(email,)).fetchone()["id"]; session.clear(); session["uid"]=uid
-  flash("Welcome to Voxora. Your account is ready.","success"); return redirect(url_for("index"))
+  flash("Welcome to Voxora Access. Your account is ready.","success"); return redirect(url_for("index"))
  return render_template("auth.html",mode="register")
 @app.route("/signin",methods=["GET","POST"])
 def signin():
@@ -198,7 +198,7 @@ def share(rid):
  r=resource(rid)
  if r["owner_id"]!=user()["id"]: abort(404)
  target=db().execute("SELECT id FROM users WHERE email=%s",(request.form.get("email","").strip().lower(),)).fetchone()
- if not target: flash("No Voxora account was found for that email.","error")
+ if not target: flash("No Voxora Access account was found for that email.","error")
  elif target["id"]==user()["id"]: flash("This resource is already in your account.","info")
  else:
   db().execute("INSERT INTO shares(resource_id,user_id,created_at) VALUES(%s,%s,%s) ON CONFLICT DO NOTHING",(rid,target["id"],now())); db().commit(); flash("Resource access shared.","success")
