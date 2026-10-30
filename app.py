@@ -106,7 +106,7 @@ def user():
 
 @app.context_processor
 def globals_for_templates():
-    return {"current_user": user()}
+    return {"current_user": user(), "now_year": datetime.now().year}
 
 
 def login_required(fn):
