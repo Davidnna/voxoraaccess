@@ -1,15 +1,56 @@
-{% extends "base.html" %}
-{% block title %}How Voxora Access works{% endblock %}
+{% extends "base.html" %} {% block title %}How Voxora Access works{% endblock %}
 {% block content %}
 <section class="public-page">
-    <p class="eyebrow">How it works</p><h1>A simple path from finding a resource to learning with it.</h1>
-    <p class="lede">Explore openly shared materials, create a student account to save and contribute resources, and use the reading view when it suits your study style.</p>
-    <div class="feature-grid" style="margin-top:42px">
-        <article class="feature-card"><span class="feature-number">STEP 01</span><h3>Explore</h3><p>Search public materials by title, description or available extracted text. Open a resource to review its details.</p></article>
-        <article class="feature-card"><span class="feature-number">STEP 02</span><h3>Organize</h3><p>Create an account to upload resources, save items to My Library and see materials shared privately with you.</p></article>
-        <article class="feature-card"><span class="feature-number">STEP 03</span><h3>Read or listen</h3><p>Open the reading view for extracted text. If your browser supports speech synthesis, start playback and adjust the speed.</p></article>
+    <p class="eyebrow">How it works</p>
+    <h1>A simple path from finding a resource to learning with it.</h1>
+    <p class="lede">
+        Explore openly shared materials, create a student account to save and
+        contribute resources, and use the reading view when it suits your study
+        style.
+    </p>
+    <div class="feature-grid" style="margin-top: 42px">
+        <article class="feature-card">
+            <span class="feature-number">STEP 01</span>
+            <h3>Explore</h3>
+            <p>
+                Search public materials by title, description or available
+                extracted text. Open a resource to review its details.
+            </p>
+        </article>
+        <article class="feature-card">
+            <span class="feature-number">STEP 02</span>
+            <h3>Organize</h3>
+            <p>
+                Create an account to upload resources, save items to My Library
+                and see materials shared privately with you.
+            </p>
+        </article>
+        <article class="feature-card">
+            <span class="feature-number">STEP 03</span>
+            <h3>Read or listen</h3>
+            <p>
+                Open the reading view for extracted text. If your browser
+                supports speech synthesis, start playback and adjust the speed.
+            </p>
+        </article>
     </div>
-    <section class="section-block"><h2>Sharing and visibility</h2><p>When uploading, choose whether a resource is public or private. Public resources can be discovered by visitors. Private resources are intended for the owner and accounts the owner explicitly shares them with. You are responsible for having permission to upload and share the material.</p><h2>Document support and limitations</h2><p>PDF, DOCX, PPTX, TXT, MD, RTF and CSV are accepted for upload. ODT, ODS and ODP may be accepted but do not currently have text extraction implemented. Scanned PDFs may need OCR. Extracted text is not a substitute for the original document.</p></section>
+    <section class="section-block">
+        <h2>Sharing and visibility</h2>
+        <p>
+            When uploading, choose whether a resource is public or private.
+            Public resources can be discovered by visitors. Private resources
+            are intended for the owner and accounts the owner explicitly shares
+            them with. You are responsible for having permission to upload and
+            share the material.
+        </p>
+        <h2>Document support and limitations</h2>
+        <p>
+            PDF, DOCX, PPTX, TXT, MD, RTF and CSV are accepted for upload. ODT,
+            ODS and ODP may be accepted but do not currently have text
+            extraction implemented. Scanned PDFs may need OCR. Extracted text is
+            not a substitute for the original document.
+        </p>
+    </section>
     <a class="btn primary" href="{{ url_for('register') }}">Get started</a>
 </section>
 {% endblock %}

@@ -1,16 +1,60 @@
-{% extends "base.html" %}
-{% block title %}About Voxora Access{% endblock %}
-{% block content %}
+{% extends "base.html" %} {% block title %}About Voxora Access{% endblock %} {%
+block content %}
 <section class="public-page">
     <p class="eyebrow">About Voxora Access</p>
     <h1>Learning resources should be easier to find, use and revisit.</h1>
-    <p class="lede">Voxora Access is a student-focused learning-resource platform designed to make digital study materials more discoverable and more flexible to access.</p>
-    <div class="feature-grid" style="margin-top:42px">
-        <article class="feature-card"><span class="feature-number">OUR PURPOSE</span><h3>Access with dignity</h3><p>We want students, including people with visual impairments, to have more ways to engage with digital learning materials.</p></article>
-        <article class="feature-card"><span class="feature-number">OUR APPROACH</span><h3>Useful tools, clearly explained</h3><p>Resource discovery, personal libraries, controlled sharing and browser-supported read-aloud tools sit in one place.</p></article>
-        <article class="feature-card"><span class="feature-number">OUR COMMITMENT</span><h3>Keep improving</h3><p>Accessibility is ongoing work. We aim to make limitations visible and improve the experience through testing and feedback.</p></article>
+    <p class="lede">
+        Voxora Access is a student-focused learning-resource platform designed
+        to make digital study materials more discoverable and more flexible to
+        access.
+    </p>
+    <div class="feature-grid" style="margin-top: 42px">
+        <article class="feature-card">
+            <span class="feature-number">OUR PURPOSE</span>
+            <h3>Access with dignity</h3>
+            <p>
+                We want students, including people with visual impairments, to
+                have more ways to engage with digital learning materials.
+            </p>
+        </article>
+        <article class="feature-card">
+            <span class="feature-number">OUR APPROACH</span>
+            <h3>Useful tools, clearly explained</h3>
+            <p>
+                Resource discovery, personal libraries, controlled sharing and
+                browser-supported read-aloud tools sit in one place.
+            </p>
+        </article>
+        <article class="feature-card">
+            <span class="feature-number">OUR COMMITMENT</span>
+            <h3>Keep improving</h3>
+            <p>
+                Accessibility is ongoing work. We aim to make limitations
+                visible and improve the experience through testing and feedback.
+            </p>
+        </article>
     </div>
-    <section class="section-block"><h2>What the platform currently offers</h2><ul><li>Student accounts and a personal dashboard.</li><li>Public resource discovery and search.</li><li>Private uploads and sharing with registered accounts.</li><li>A personal library that saves references to resources.</li><li>Text extraction for supported document formats and a browser speech reading view.</li></ul><p class="policy-note">Voxora Access is currently a learning-resource sharing prototype. Text extraction can omit images, diagrams, equations and complex document layout. Speech voices and availability depend on the browser and device.</p></section>
-    <a class="btn primary" href="{{ url_for('register') }}">Create an account</a>
+    <section class="section-block">
+        <h2>What the platform currently offers</h2>
+        <ul>
+            <li>Student accounts and a personal dashboard.</li>
+            <li>Public resource discovery and search.</li>
+            <li>Private uploads and sharing with registered accounts.</li>
+            <li>A personal library that saves references to resources.</li>
+            <li>
+                Text extraction for supported document formats and a browser
+                speech reading view.
+            </li>
+        </ul>
+        <p class="policy-note">
+            Voxora Access is currently a learning-resource sharing prototype.
+            Text extraction can omit images, diagrams, equations and complex
+            document layout. Speech voices and availability depend on the
+            browser and device.
+        </p>
+    </section>
+    <a class="btn primary" href="{{ url_for('register') }}"
+        >Create an account</a
+    >
 </section>
 {% endblock %}

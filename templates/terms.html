@@ -1,19 +1,93 @@
-{% extends "base.html" %}
-{% block title %}Terms of use{% endblock %}
-{% block content %}
+{% extends "base.html" %} {% block title %}Terms of use{% endblock %} {% block
+content %}
 <article class="policy-page">
-    <p class="eyebrow">Platform policies</p><h1>Terms of use</h1><p class="muted">Last updated: 31 October 2026</p>
-    <p>These terms govern your use of Voxora Access. By accessing the platform, you agree to these terms. If you do not agree, do not use the service.</p>
-    <p class="policy-note"><b>Draft for review:</b> These terms are a starting point for the Voxora Access prototype, not legal advice. The platform operator should have them reviewed for the operator's identity, jurisdiction and actual service arrangements before public launch.</p>
-    <h2>1. The service</h2><p>Voxora Access provides tools to discover, upload, organize, share and access digital learning resources. Features may change as the service develops. Availability is not guaranteed and the platform may be updated, suspended or discontinued.</p>
-    <h2>2. Accounts</h2><p>You must provide accurate account information, keep your sign-in credentials confidential and promptly address suspected unauthorized access. You are responsible for activity carried out through your account. Do not impersonate another person or create accounts for deceptive purposes.</p>
-    <h2>3. Your uploads and permissions</h2><p>You retain whatever rights you hold in materials you upload. You confirm that you have the rights and permissions needed to upload, store and share each item according to its visibility setting. You grant the platform operator permission to host, store, process, display and deliver your materials only as needed to operate the features you choose.</p>
-    <h2>4. Public and private resources</h2><p>Public resources may be visible to visitors. Private resources are intended to be accessible to you and accounts you explicitly share them with. Do not upload confidential, personal, restricted or sensitive materials unless you are authorized and understand the risks. Do not rely on the service as an archive or sole backup.</p>
-    <h2>5. Acceptable use</h2><p>You must comply with the <a href="{{ url_for('acceptable_use') }}">Acceptable Use Policy</a>, applicable law and third-party rights. You may not use the platform to distribute malware, infringe copyright, harass others, or interfere with the service.</p>
-    <h2>6. Intellectual property and reports</h2><p>The platform's name, branding and original interface elements belong to their respective rights holders. User-uploaded materials remain subject to their own rights. See the <a href="{{ url_for('copyright') }}">Copyright and takedown page</a> to report suspected infringement.</p>
-    <h2>7. Availability, accuracy and disclaimers</h2><p>The platform is provided on an as-available basis. Extracted text may be incomplete or inaccurate and may omit diagrams, tables, equations, images or reading order. Browser speech synthesis depends on your device and browser. Verify important information against the original material.</p>
-    <h2>8. Suspension and removal</h2><p>We may restrict access to content or accounts where reasonably necessary to protect users, respond to reports, comply with law or maintain the service. Where appropriate, we may seek clarification before taking action.</p>
-    <h2>9. Liability</h2><p>To the extent permitted by applicable law, the platform operator is not responsible for indirect or consequential loss, loss of data, or interruptions arising from use of this prototype. Nothing in these terms excludes liability that cannot lawfully be excluded.</p>
-    <h2>10. Changes and contact</h2><p>These terms may be updated as the service changes. The latest version will be published on this page. For questions, use the <a href="{{ url_for('contact') }}">contact page</a>.</p>
+    <p class="eyebrow">Platform policies</p>
+    <h1>Terms of use</h1>
+    <p class="muted">Last updated: 31 October 2026</p>
+    <p>
+        These terms govern your use of Voxora Access. By accessing the platform,
+        you agree to these terms. If you do not agree, do not use the service.
+    </p>
+    <p class="policy-note">
+        <b>Draft for review:</b> These terms are a starting point for the Voxora
+        Access prototype, not legal advice. The platform operator should have
+        them reviewed for the operator's identity, jurisdiction and actual
+        service arrangements before public launch.
+    </p>
+    <h2>1. The service</h2>
+    <p>
+        Voxora Access provides tools to discover, upload, organize, share and
+        access digital learning resources. Features may change as the service
+        develops. Availability is not guaranteed and the platform may be
+        updated, suspended or discontinued.
+    </p>
+    <h2>2. Accounts</h2>
+    <p>
+        You must provide accurate account information, keep your sign-in
+        credentials confidential and promptly address suspected unauthorized
+        access. You are responsible for activity carried out through your
+        account. Do not impersonate another person or create accounts for
+        deceptive purposes.
+    </p>
+    <h2>3. Your uploads and permissions</h2>
+    <p>
+        You retain whatever rights you hold in materials you upload. You confirm
+        that you have the rights and permissions needed to upload, store and
+        share each item according to its visibility setting. You grant the
+        platform operator permission to host, store, process, display and
+        deliver your materials only as needed to operate the features you
+        choose.
+    </p>
+    <h2>4. Public and private resources</h2>
+    <p>
+        Public resources may be visible to visitors. Private resources are
+        intended to be accessible to you and accounts you explicitly share them
+        with. Do not upload confidential, personal, restricted or sensitive
+        materials unless you are authorized and understand the risks. Do not
+        rely on the service as an archive or sole backup.
+    </p>
+    <h2>5. Acceptable use</h2>
+    <p>
+        You must comply with the
+        <a href="{{ url_for('acceptable_use') }}">Acceptable Use Policy</a>,
+        applicable law and third-party rights. You may not use the platform to
+        distribute malware, infringe copyright, harass others, or interfere with
+        the service.
+    </p>
+    <h2>6. Intellectual property and reports</h2>
+    <p>
+        The platform's name, branding and original interface elements belong to
+        their respective rights holders. User-uploaded materials remain subject
+        to their own rights. See the
+        <a href="{{ url_for('copyright') }}">Copyright and takedown page</a> to
+        report suspected infringement.
+    </p>
+    <h2>7. Availability, accuracy and disclaimers</h2>
+    <p>
+        The platform is provided on an as-available basis. Extracted text may be
+        incomplete or inaccurate and may omit diagrams, tables, equations,
+        images or reading order. Browser speech synthesis depends on your device
+        and browser. Verify important information against the original material.
+    </p>
+    <h2>8. Suspension and removal</h2>
+    <p>
+        We may restrict access to content or accounts where reasonably necessary
+        to protect users, respond to reports, comply with law or maintain the
+        service. Where appropriate, we may seek clarification before taking
+        action.
+    </p>
+    <h2>9. Liability</h2>
+    <p>
+        To the extent permitted by applicable law, the platform operator is not
+        responsible for indirect or consequential loss, loss of data, or
+        interruptions arising from use of this prototype. Nothing in these terms
+        excludes liability that cannot lawfully be excluded.
+    </p>
+    <h2>10. Changes and contact</h2>
+    <p>
+        These terms may be updated as the service changes. The latest version
+        will be published on this page. For questions, use the
+        <a href="{{ url_for('contact') }}">contact page</a>.
+    </p>
 </article>
 {% endblock %}
