@@ -127,7 +127,26 @@ def csrf():
     return session["_csrf"]
 
 
+
 app.jinja_env.globals["csrf_token"] = csrf
+
+
+# Every browser-facing page is now rendered by the React application shell.
+_flask_render_template = render_template
+
+
+def render_template(template_name, *args, **kwargs):
+    messages = [
+        {"category": category, "message": message}
+        for category, message in session.pop("_flashes", [])
+    ]
+    return _flask_render_template(
+        "spa.html",
+        initial_path=request.path,
+        csrf_value=csrf(),
+        current_user=user(),
+        flash_messages=messages,
+    )
 
 
 @app.before_request
@@ -523,6 +542,59 @@ def privacy():
 def accessibility():
     return render_template("accessibility.html")
 
+
+
+
+@app.get("/api/site")
+def site_data():
+    path = request.args.get("path", "/")
+    current = user()
+    payload = {
+        "path": path,
+        "user": ({"id": current["id"], "name": current["name"], "email": current["email"]} if current else None),
+        "csrf": csrf(),
+        "resources": [],
+        "resource": None,
+    }
+
+    if path == "/":
+        q = request.args.get("q", "").strip()[:100]
+        sql = "SELECT r.id,r.title,r.description,r.extension,r.size_bytes,u.name owner_name FROM resources r JOIN users u ON u.id=r.owner_id WHERE r.visibility='public'"
+        params = []
+        if q:
+            sql += " AND (r.title ILIKE %s OR r.description ILIKE %s OR r.extracted_text ILIKE %s)"
+            term = "%" + q + "%"
+            params = [term, term, term]
+        rows = db().execute(sql + " ORDER BY r.created_at DESC LIMIT 60", params).fetchall()
+        payload["query"] = q
+        payload["resources"] = [dict(row) for row in rows]
+    elif path == "/my-resources" and current:
+        rows = db().execute("SELECT id,title,description,extension,size_bytes,visibility,created_at FROM resources WHERE owner_id=%s ORDER BY created_at DESC", (current["id"],)).fetchall()
+        payload["resources"] = [dict(row) for row in rows]
+    elif path == "/library" and current:
+        rows = db().execute("SELECT r.id,r.title,r.description,r.extension,r.size_bytes,r.visibility,u.name owner_name FROM library l JOIN resources r ON r.id=l.resource_id JOIN users u ON u.id=r.owner_id WHERE l.user_id=%s ORDER BY l.created_at DESC", (current["id"],)).fetchall()
+        payload["resources"] = [dict(row) for row in rows if accessible(row, current)]
+    elif path == "/shared-with-me" and current:
+        rows = db().execute("SELECT r.id,r.title,r.description,r.extension,r.size_bytes,r.visibility,u.name owner_name FROM shares s JOIN resources r ON r.id=s.resource_id JOIN users u ON u.id=r.owner_id WHERE s.user_id=%s ORDER BY s.created_at DESC", (current["id"],)).fetchall()
+        payload["resources"] = [dict(row) for row in rows]
+    elif path.startswith("/resource/"):
+        match = re.match(r"^/resource/(\\d+)(?:/read)?$", path)
+        if match:
+            r = resource(int(match.group(1)))
+            if not accessible(r, current):
+                abort(404)
+            payload["resource"] = {
+                "id": r["id"], "title": r["title"], "description": r["description"],
+                "extension": r["extension"], "size_bytes": r["size_bytes"],
+                "visibility": r["visibility"], "owner_id": r["owner_id"],
+                "owner_name": r["owner_name"], "extracted_text": r["extracted_text"],
+                "is_owner": bool(current and current["id"] == r["owner_id"]),
+                "in_library": bool(current and db().execute(
+                    "SELECT 1 FROM library WHERE user_id=%s AND resource_id=%s",
+                    (current["id"], r["id"])
+                ).fetchone()),
+            }
+    return jsonify(payload)
 
 
 @app.get("/api/dashboard")
