@@ -533,6 +533,12 @@ def preferences():
     return render_template("preferences.html")
 
 
+@app.route("/account")
+@login_required
+def account():
+    return render_template("account.html")
+
+
 @app.route("/privacy")
 def privacy():
     return render_template("privacy.html")
