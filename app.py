@@ -193,59 +193,15 @@ def resource(rid):
     return r
 
 
-def extract(data, ext):
-    try:
-        stream = io.BytesIO(data)
-        if ext in {"txt", "md", "csv"}:
-            return data.decode("utf-8", errors="replace")[:500000]
-        if ext == "rtf":
-            text = data.decode("utf-8", errors="replace")
-            text = re.sub(r"\\[a-zA-Z]+-?\d* ?", " ", text)
-            return re.sub(r"\s+", " ", text.replace("{", " ").replace("}", " "))[
-                :500000
-            ]
-        if ext == "pdf":
-            from pypdf import PdfReader
-
-            return "\n\n".join(p.extract_text() or "" for p in PdfReader(stream).pages)[
-                :500000
-            ]
-        if ext == "docx":
-            from docx import Document
-
-            d = Document(stream)
-            parts = [p.text for p in d.paragraphs if p.text.strip()]
-            for t in d.tables:
-                for row in t.rows:
-                    parts.append(" | ".join(c.text.strip() for c in row.cells))
-            return "\n\n".join(parts)[:500000]
-        if ext == "pptx":
-            from pptx import Presentation
-
-            parts = []
-            for n, slide in enumerate(Presentation(stream).slides, 1):
-                parts.append(f"Slide {n}")
-                for sh in slide.shapes:
-                    if getattr(sh, "has_text_frame", False) and sh.text.strip():
-                        parts.append(sh.text.strip())
-                    if getattr(sh, "has_table", False):
-                        for row in sh.table.rows:
-                            parts.append(" | ".join(c.text.strip() for c in row.cells))
-            return "\n\n".join(parts)[:500000]
-    except Exception:
-        return ""
-    return ""
-
-
 @app.route("/")
 def index():
     q = request.args.get("q", "").strip()[:100]
     sql = "SELECT r.id,r.title,r.description,r.extension,r.size_bytes,u.name owner_name FROM resources r JOIN users u ON u.id=r.owner_id WHERE r.visibility='public'"
     p = []
     if q:
-        sql += " AND (r.title ILIKE %s OR r.description ILIKE %s OR r.extracted_text ILIKE %s)"
+        sql += " AND (r.title ILIKE %s OR r.description ILIKE %s)"
         t = "%" + q + "%"
-        p = [t, t, t]
+        p = [t, t]
     rows = db().execute(sql + " ORDER BY r.created_at DESC LIMIT 60", p).fetchall()
     return render_template("index.html", resources=rows, query=q)
 
@@ -369,7 +325,7 @@ def upload():
                     len(file_data),
                     digest,
                     vis,
-                    extract(file_data, ext),
+                    "",
                     file_data,
                     now(),
                 ),
@@ -389,6 +345,38 @@ def detail(rid):
     if not accessible(r, user()):
         abort(404)
     return render_template("resource.html", resource=r)
+
+
+@app.route("/resource/<int:rid>/preview")
+def preview(rid):
+    r = resource(rid)
+    if not accessible(r, user()):
+        abort(404)
+    if r["file_data"] is None:
+        abort(404)
+
+    extension = (r["extension"] or "").lower()
+    inline_types = {
+        "pdf": "application/pdf",
+        "txt": "text/plain; charset=utf-8",
+        "md": "text/plain; charset=utf-8",
+        "csv": "text/plain; charset=utf-8",
+    }
+    mimetype = inline_types.get(extension)
+    if not mimetype:
+        abort(415, "Inline preview is not available for this document type.")
+
+    response = send_file(
+        io.BytesIO(bytes(r["file_data"])),
+        mimetype=mimetype,
+        as_attachment=False,
+        download_name=r["original_name"],
+        conditional=True,
+    )
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'self'; sandbox"
+    response.headers["Content-Disposition"] = "inline"
+    return response
 
 
 @app.route("/resource/<int:rid>/download")
@@ -570,7 +558,7 @@ def site_data():
         if q:
             sql += " AND (r.title ILIKE %s OR r.description ILIKE %s OR r.extracted_text ILIKE %s)"
             term = "%" + q + "%"
-            params = [term, term, term]
+            params = [term, term]
         rows = db().execute(sql + " ORDER BY r.created_at DESC LIMIT 60", params).fetchall()
         payload["query"] = q
         payload["resources"] = [dict(row) for row in rows]
@@ -593,7 +581,7 @@ def site_data():
                 "id": r["id"], "title": r["title"], "description": r["description"],
                 "extension": r["extension"], "size_bytes": r["size_bytes"],
                 "visibility": r["visibility"], "owner_id": r["owner_id"],
-                "owner_name": r["owner_name"], "extracted_text": r["extracted_text"],
+                "owner_name": r["owner_name"],
                 "is_owner": bool(current and current["id"] == r["owner_id"]),
                 "in_library": bool(current and db().execute(
                     "SELECT 1 FROM library WHERE user_id=%s AND resource_id=%s",
