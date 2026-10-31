@@ -578,7 +578,7 @@ def site_data():
         rows = db().execute("SELECT r.id,r.title,r.description,r.extension,r.size_bytes,r.visibility,u.name owner_name FROM shares s JOIN resources r ON r.id=s.resource_id JOIN users u ON u.id=r.owner_id WHERE s.user_id=%s ORDER BY s.created_at DESC", (current["id"],)).fetchall()
         payload["resources"] = [dict(row) for row in rows]
     elif path.startswith("/resource/"):
-        match = re.match(r"^/resource/(\\d+)(?:/read)?$", path)
+        match = re.match(r"^/resource/(\d+)(?:/read)?$", path)
         if match:
             r = resource(int(match.group(1)))
             if not accessible(r, current):
