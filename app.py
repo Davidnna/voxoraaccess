@@ -1,4 +1,4 @@
-import os, secrets, hashlib, re, io
+import os, secrets, hashlib, re, io, subprocess, tempfile
 from pathlib import Path
 from functools import wraps
 from datetime import datetime, timezone
@@ -64,12 +64,49 @@ def now():
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+def convert_office_to_pdf(file_data, original_name):
+    """Convert a DOCX/PPTX upload to a PDF preview using LibreOffice."""
+    with tempfile.TemporaryDirectory(prefix="voxora-convert-") as temp_dir:
+        source = Path(temp_dir) / secure_filename(original_name)
+        output_dir = Path(temp_dir) / "converted"
+        profile_dir = Path(temp_dir) / "lo-profile"
+        output_dir.mkdir()
+        source.write_bytes(file_data)
+        try:
+            subprocess.run(
+                [
+                    "libreoffice",
+                    f"-env:UserInstallation={profile_dir.as_uri()}",
+                    "--headless",
+                    "--convert-to",
+                    "pdf",
+                    "--outdir",
+                    str(output_dir),
+                    str(source),
+                ],
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=75,
+            )
+        except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            app.logger.exception("Office document preview conversion failed for %s", original_name)
+            return None
+        converted = output_dir / f"{source.stem}.pdf"
+        if not converted.is_file() or converted.stat().st_size == 0:
+            app.logger.error("LibreOffice did not produce a PDF for %s", original_name)
+            return None
+        pdf_data = converted.read_bytes()
+        return pdf_data if pdf_data.startswith(b"%PDF-") else None
+
+
 def init():
     c = conn()
     try:
         c.execute("""
   CREATE TABLE IF NOT EXISTS users(id BIGSERIAL PRIMARY KEY,name TEXT NOT NULL,email TEXT UNIQUE NOT NULL,password_hash TEXT NOT NULL,created_at TEXT NOT NULL);
-  CREATE TABLE IF NOT EXISTS resources(id BIGSERIAL PRIMARY KEY,owner_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,title TEXT NOT NULL,description TEXT NOT NULL DEFAULT '',original_name TEXT NOT NULL,stored_name TEXT UNIQUE NOT NULL,extension TEXT NOT NULL,mime_type TEXT NOT NULL,size_bytes BIGINT NOT NULL,sha256 TEXT NOT NULL,visibility TEXT NOT NULL CHECK(visibility IN ('public','private')),extracted_text TEXT NOT NULL DEFAULT '',file_data BYTEA NOT NULL,created_at TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS resources(id BIGSERIAL PRIMARY KEY,owner_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,title TEXT NOT NULL,description TEXT NOT NULL DEFAULT '',original_name TEXT NOT NULL,stored_name TEXT UNIQUE NOT NULL,extension TEXT NOT NULL,mime_type TEXT NOT NULL,size_bytes BIGINT NOT NULL,sha256 TEXT NOT NULL,visibility TEXT NOT NULL CHECK(visibility IN ('public','private')),extracted_text TEXT NOT NULL DEFAULT '',file_data BYTEA NOT NULL,preview_data BYTEA,created_at TEXT NOT NULL);
+  ALTER TABLE resources ADD COLUMN IF NOT EXISTS preview_data BYTEA;
   CREATE TABLE IF NOT EXISTS shares(resource_id BIGINT REFERENCES resources(id) ON DELETE CASCADE,user_id BIGINT REFERENCES users(id) ON DELETE CASCADE,created_at TEXT NOT NULL,PRIMARY KEY(resource_id,user_id));
   CREATE TABLE IF NOT EXISTS library(user_id BIGINT REFERENCES users(id) ON DELETE CASCADE,resource_id BIGINT REFERENCES resources(id) ON DELETE CASCADE,created_at TEXT NOT NULL,PRIMARY KEY(user_id,resource_id));
   CREATE INDEX IF NOT EXISTS idx_resources_public ON resources(visibility,created_at);
@@ -298,6 +335,7 @@ def upload():
         if not file_data:
             flash("The selected file is empty.", "error")
             return render_template("upload.html")
+        preview_data = convert_office_to_pdf(file_data, original) if ext in {"docx", "pptx"} else None
         digest = hashlib.sha256(file_data).hexdigest()
         uid = user()["id"]
         dup = (
@@ -313,7 +351,7 @@ def upload():
             return redirect(url_for("detail", rid=dup["id"]))
         try:
             db().execute(
-                "INSERT INTO resources(owner_id,title,description,original_name,stored_name,extension,mime_type,size_bytes,sha256,visibility,extracted_text,file_data,created_at) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                "INSERT INTO resources(owner_id,title,description,original_name,stored_name,extension,mime_type,size_bytes,sha256,visibility,extracted_text,file_data,preview_data,created_at) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
                 (
                     uid,
                     title or Path(original).stem,
@@ -327,6 +365,7 @@ def upload():
                     vis,
                     "",
                     file_data,
+                    preview_data,
                     now(),
                 ),
             )
@@ -334,7 +373,10 @@ def upload():
         except Exception:
             db().rollback()
             raise
-        flash("Your resource has been uploaded.", "success")
+        if ext in {"docx", "pptx"} and preview_data is None:
+            flash("Your original file was uploaded, but its PDF preview could not be generated. You can still download the original.", "info")
+        else:
+            flash("Your resource has been uploaded.", "success")
         return redirect(url_for("my_resources"))
     return render_template("upload.html")
 
@@ -356,21 +398,31 @@ def preview(rid):
         abort(404)
 
     extension = (r["extension"] or "").lower()
-    inline_types = {
-        "pdf": "application/pdf",
-        "txt": "text/plain; charset=utf-8",
-        "md": "text/plain; charset=utf-8",
-        "csv": "text/plain; charset=utf-8",
-    }
-    mimetype = inline_types.get(extension)
-    if not mimetype:
-        abort(415, "Inline preview is not available for this document type.")
+    if extension in {"docx", "pptx"}:
+        preview_data = r.get("preview_data")
+        if not preview_data:
+            abort(415, "A PDF preview is not available for this document.")
+        payload = bytes(preview_data)
+        mimetype = "application/pdf"
+        preview_name = f"{Path(r['original_name']).stem}.pdf"
+    else:
+        inline_types = {
+            "pdf": "application/pdf",
+            "txt": "text/plain; charset=utf-8",
+            "md": "text/plain; charset=utf-8",
+            "csv": "text/plain; charset=utf-8",
+        }
+        mimetype = inline_types.get(extension)
+        if not mimetype:
+            abort(415, "Inline preview is not available for this document type.")
+        payload = bytes(r["file_data"])
+        preview_name = r["original_name"]
 
     response = send_file(
-        io.BytesIO(bytes(r["file_data"])),
+        io.BytesIO(payload),
         mimetype=mimetype,
         as_attachment=False,
-        download_name=r["original_name"],
+        download_name=preview_name,
         conditional=True,
     )
     response.headers["X-Content-Type-Options"] = "nosniff"
