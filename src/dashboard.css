@@ -828,3 +828,288 @@
         animation-iteration-count: 1 !important;
     }
 }
+
+
+/* Site frame, full-bleed footer and workspace refinements */
+html, body, #voxora-app-root {
+    width: 100%;
+    min-width: 320px;
+    min-height: 100%;
+    margin: 0;
+}
+body { overflow-x: hidden; }
+#voxora-app-root { width: 100%; max-width: none; }
+#voxora-app-root .react-site-frame {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    width: 100%;
+    max-width: none;
+    overflow: clip;
+}
+#voxora-app-root .react-public-layout,
+#voxora-app-root .react-app-layout {
+    flex: 1 0 auto;
+    width: 100%;
+    max-width: none;
+}
+#voxora-app-root .react-page-main { min-height: 55vh; }
+#voxora-app-root .react-site-footer {
+    display: grid;
+    grid-template-columns: minmax(200px, 1fr) minmax(0, 2fr);
+    width: 100%;
+    max-width: none;
+    min-height: 150px;
+    margin: 0;
+    padding: 34px clamp(22px, 5vw, 76px) 24px;
+    border-radius: 0;
+    box-sizing: border-box;
+}
+#voxora-app-root .react-site-footer nav {
+    width: 100%;
+    max-width: none;
+    justify-content: flex-end;
+    align-content: start;
+}
+#voxora-app-root .react-site-footer > small { width: 100%; }
+#voxora-app-root .react-workspace-topbar {
+    min-height: 76px;
+    padding-inline: clamp(20px, 3vw, 42px);
+}
+#voxora-app-root .react-workspace-actions {
+    margin-left: auto;
+    align-items: center;
+}
+#voxora-app-root .react-account-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 38px;
+    padding: 8px 13px;
+    border: 1px solid var(--react-line);
+    border-radius: 9px;
+    background: #fff;
+}
+#voxora-app-root .react-sidebar {
+    position: relative;
+    align-self: stretch;
+    min-height: 100%;
+}
+#voxora-app-root .react-sidebar nav a[aria-current="page"] {
+    background: #ffffff24;
+    color: var(--react-lime);
+}
+#voxora-app-root .react-workspace-footer {
+    grid-template-columns: 1fr auto;
+    min-height: 112px;
+    padding-block: 22px;
+}
+#voxora-app-root .react-workspace-footer nav {
+    justify-content: flex-end;
+}
+#voxora-app-root .react-skip-link {
+    position: fixed;
+    z-index: 1000;
+    top: 10px;
+    left: 10px;
+    padding: 12px 16px;
+    transform: translateY(-160%);
+    border-radius: 8px;
+    background: var(--react-lime);
+    color: var(--react-ink);
+    font-weight: 800;
+}
+#voxora-app-root .react-skip-link:focus { transform: translateY(0); }
+#voxora-app-root .react-scroll-top {
+    position: fixed;
+    z-index: 40;
+    right: max(18px, env(safe-area-inset-right));
+    bottom: max(18px, env(safe-area-inset-bottom));
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    min-width: 48px;
+    min-height: 46px;
+    padding: 0 13px;
+    border: 1px solid #ffffff30;
+    border-radius: 999px;
+    background: var(--react-forest);
+    box-shadow: 0 8px 24px #12372a30;
+    color: #fff;
+    font-size: 17px;
+    cursor: pointer;
+}
+#voxora-app-root .react-scroll-top span { font-size: 11px; font-weight: 750; }
+#voxora-app-root .react-initial-loading {
+    display: flex;
+    min-height: 100vh;
+    width: 100%;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 30px;
+    background: radial-gradient(circle at 50% 42%, #eaf1e6 0, var(--react-ivory) 48%);
+    color: var(--react-forest);
+    text-align: center;
+}
+#voxora-app-root .react-initial-loading > strong { font-size: 22px; letter-spacing: -.04em; }
+#voxora-app-root .react-initial-loading > p,
+#voxora-app-root .react-loading-panel > p { margin: 0; color: var(--react-muted); font-size: 13px; }
+#voxora-app-root .react-loader-orbit {
+    display: grid;
+    width: 58px;
+    height: 58px;
+    place-items: center;
+    margin-bottom: 8px;
+    border: 3px solid #dfe9d9;
+    border-top-color: var(--react-teal);
+    border-right-color: var(--react-lime);
+    border-radius: 50%;
+    animation: voxora-spin 1s linear infinite;
+}
+#voxora-app-root .react-loader-orbit span {
+    width: 13px;
+    height: 13px;
+    border-radius: 50%;
+    background: var(--react-forest);
+}
+#voxora-app-root .react-loading-track {
+    width: min(240px, 70vw);
+    height: 5px;
+    margin-top: 9px;
+    overflow: hidden;
+    border-radius: 99px;
+    background: #e5ecdf;
+}
+#voxora-app-root .react-loading-track span {
+    display: block;
+    width: 42%;
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, var(--react-teal), var(--react-lime));
+    animation: voxora-progress 1.5s ease-in-out infinite;
+}
+#voxora-app-root .react-loading-panel {
+    width: 100%;
+    padding: clamp(22px, 4vw, 42px);
+    border: 1px solid var(--react-line);
+    border-radius: 18px;
+    background: #fff;
+    box-shadow: var(--react-shadow);
+}
+#voxora-app-root .react-loading-panel h2 { margin: 0 0 8px; color: var(--react-forest); }
+#voxora-app-root .react-loading-panel .react-loader-orbit { margin-bottom: 18px; }
+#voxora-app-root .react-skeleton-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 14px;
+    margin: 30px 0 24px;
+}
+#voxora-app-root .react-skeleton-grid i,
+#voxora-app-root .react-skeleton-line {
+    display: block;
+    height: 100px;
+    border-radius: 12px;
+    background: linear-gradient(100deg, #f0f3ee 25%, #fafbf9 42%, #f0f3ee 60%);
+    background-size: 220% 100%;
+    animation: voxora-shimmer 1.5s ease-in-out infinite;
+}
+#voxora-app-root .react-skeleton-line { height: 15px; margin: 12px 0; }
+#voxora-app-root .react-skeleton-line.short { width: 62%; }
+#voxora-app-root .react-account-panel {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    margin: 26px 0 18px;
+    padding: 24px;
+    border: 1px solid var(--react-line);
+    border-radius: 16px;
+    background: #fff;
+    box-shadow: var(--react-shadow);
+}
+#voxora-app-root .react-account-avatar {
+    display: grid;
+    flex: 0 0 58px;
+    width: 58px;
+    height: 58px;
+    place-items: center;
+    border-radius: 17px;
+    background: var(--react-forest);
+    color: var(--react-lime);
+    font-size: 25px;
+    font-weight: 900;
+}
+#voxora-app-root .react-account-label { color: var(--react-teal); font-size: 10px; font-weight: 900; letter-spacing: .13em; }
+#voxora-app-root .react-account-panel h2 { margin: 5px 0; }
+#voxora-app-root .react-account-panel p { margin: 0; color: var(--react-muted); }
+#voxora-app-root .react-account-settings {
+    display: grid;
+    gap: 14px;
+}
+#voxora-app-root .react-account-settings article {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    padding: 22px;
+    border: 1px solid var(--react-line);
+    border-radius: 14px;
+    background: #fff;
+}
+#voxora-app-root .react-account-settings h2 { margin: 0 0 7px; font-size: 17px; }
+#voxora-app-root .react-account-settings p { max-width: 600px; margin: 0; color: var(--react-muted); font-size: 13px; line-height: 1.6; }
+#voxora-app-root .react-account-settings dl { min-width: min(100%, 330px); margin: 0; }
+#voxora-app-root .react-account-settings dl div { padding: 8px 0; }
+#voxora-app-root .react-account-settings dt { color: var(--react-muted); font-size: 11px; }
+#voxora-app-root .react-account-settings dd { margin: 4px 0 0; color: var(--react-forest); font-size: 13px; font-weight: 750; overflow-wrap: anywhere; }
+#voxora-app-root .react-secondary-button {
+    display: inline-flex;
+    min-height: 42px;
+    align-items: center;
+    padding: 10px 15px;
+    border: 1px solid var(--react-line);
+    border-radius: 9px;
+    color: var(--react-forest);
+    font-size: 12px;
+    font-weight: 800;
+}
+#voxora-app-root button, #voxora-app-root a, #voxora-app-root input, #voxora-app-root textarea, #voxora-app-root select { touch-action: manipulation; }
+#voxora-app-root button:disabled { opacity: .58; cursor: not-allowed; }
+#voxora-app-root .react-form input:focus-visible,
+#voxora-app-root .react-form textarea:focus-visible,
+#voxora-app-root .react-search input:focus-visible {
+    border-color: var(--react-teal);
+    outline: 3px solid #007a7825;
+    outline-offset: 1px;
+}
+@keyframes voxora-spin { to { transform: rotate(360deg); } }
+@keyframes voxora-progress { 0% { transform: translateX(-110%); } 100% { transform: translateX(260%); } }
+@keyframes voxora-shimmer { to { background-position-x: -220%; } }
+@media (max-width: 900px) {
+    #voxora-app-root .react-site-footer { grid-template-columns: 1fr; gap: 18px; }
+    #voxora-app-root .react-site-footer nav { justify-content: flex-start; }
+    #voxora-app-root .react-workspace-footer { grid-template-columns: 1fr; }
+    #voxora-app-root .react-workspace-footer nav { justify-content: flex-start; }
+}
+@media (max-width: 640px) {
+    #voxora-app-root .react-topbar { align-items: flex-start; }
+    #voxora-app-root .react-workspace-topbar { display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 12px; }
+    #voxora-app-root .react-workspace-actions { flex-wrap: wrap; gap: 8px; }
+    #voxora-app-root .react-workspace-actions .react-user { display: none; }
+    #voxora-app-root .react-workspace-actions .react-signout { padding: 8px; }
+    #voxora-app-root .react-sidebar { padding: 14px 16px; }
+    #voxora-app-root .react-sidebar nav { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    #voxora-app-root .react-site-footer { padding: 26px 18px 20px; }
+    #voxora-app-root .react-site-footer nav { gap: 11px 16px; }
+    #voxora-app-root .react-skeleton-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    #voxora-app-root .react-account-settings article { align-items: flex-start; flex-direction: column; }
+    #voxora-app-root .react-account-settings dl { min-width: 0; width: 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+    #voxora-app-root .react-loader-orbit,
+    #voxora-app-root .react-loading-track span,
+    #voxora-app-root .react-skeleton-grid i,
+    #voxora-app-root .react-skeleton-line { animation: none; }
+    #voxora-app-root .react-scroll-top { scroll-behavior: auto; }
+}
