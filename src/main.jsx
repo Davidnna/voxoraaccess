@@ -2,166 +2,72 @@ import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./dashboard.css";
 
-const workspaceLinks = [
-    ["Overview", "/dashboard", "⌂"],
-    ["Explore resources", "/#resources", "⌕"],
-    ["Upload a resource", "/upload", "＋"],
-    ["My uploads", "/my-resources", "▤"],
-    ["My Library", "/library", "▣"],
-    ["Shared with me", "/shared-with-me", "⇄"],
-    ["Preferences", "/preferences", "⚙"],
+const nav = [
+    ["/", "Explore"], ["/about", "About"], ["/how-it-works", "How it works"],
+    ["/accessibility", "Accessibility"], ["/contact", "Contact"],
 ];
-
-function Header({ user }) {
-    return (
-        <header className="react-topbar">
-            <a className="react-brand" href="/">
-                <span className="react-brand-mark">V</span>
-                <span className="react-brand-copy">
-                    <strong>Voxora Access</strong>
-                    <small>Knowledge within everyone's reach.</small>
-                </span>
-            </a>
-            <div className="react-topbar-actions">
-                <a href="/about">About</a>
-                <a href="/how-it-works">How it works</a>
-                <a href="/accessibility">Accessibility</a>
-                <span className="react-user">{user.name}</span>
-                <form method="post" action="/signout">
-                    <input type="hidden" name="_csrf_token" value={window.voxoraCsrf || ""} />
-                    <button className="react-signout" type="submit">Sign out</button>
-                </form>
-            </div>
-        </header>
-    );
-}
-
-function ResourceList({ items, empty, action }) {
-    return items.length ? (
-        <div className="react-resource-list">
-            {items.map((item) => (
-                <article className="react-resource" key={item.id}>
-                    <span className="react-filetype">{(item.extension || "FILE").toUpperCase()}</span>
-                    <div className="react-resource-info">
-                        <a href={"/resource/" + item.id}>{item.title}</a>
-                        {item.visibility && <small>{item.visibility} resource</small>}
-                    </div>
-                    <a className="react-open-link" href={"/resource/" + item.id}>Open ↗</a>
-                </article>
-            ))}
-            {action && <a className="react-panel-link" href={action.href}>{action.label} →</a>}
-        </div>
-    ) : <div className="react-empty">{empty}</div>;
-}
-
-function Dashboard() {
+const accountNav = [
+    ["/dashboard", "Dashboard"], ["/upload", "Upload"], ["/my-resources", "My uploads"],
+    ["/library", "My Library"], ["/shared-with-me", "Shared with me"], ["/preferences", "Preferences"],
+];
+const legal = [["/privacy", "Privacy"], ["/terms", "Terms"], ["/cookies", "Cookies"], ["/acceptable-use", "Acceptable use"], ["/copyright", "Copyright"]];
+const pageCopy = {
+    "/about": ["About Voxora Access", "Learning resources should be easier to find, use and revisit.", "A student-focused learning-resource platform designed to make digital study materials more discoverable and flexible to access.", [["Access with dignity","We want students, including people with visual impairments, to have more ways to engage with digital learning materials."],["Useful tools, clearly explained","Resource discovery, personal libraries, controlled sharing and browser-supported read-aloud tools sit in one place."],["Keep improving","Accessibility is ongoing work. We aim to make limitations visible and improve through testing and feedback."]]],
+    "/how-it-works": ["How it works", "A simple path from finding a resource to learning with it.", "Explore openly shared materials, create an account to save and contribute resources, and use the reading view when it suits your study style.", [["Explore","Search public materials by title, description or available extracted text."],["Organize","Create an account to upload resources, save items to My Library and see materials shared privately with you."],["Read or listen","Open the reading view for extracted text. If your browser supports speech synthesis, start playback and adjust the speed."]]],
+    "/accessibility": ["Accessibility", "More ways to access learning materials.", "Voxora Access is designed with flexible reading and navigation in mind.", [["Keyboard access","Use semantic links, buttons, labels and keyboard navigation throughout the interface."],["Read aloud","The reading view uses browser speech synthesis where available, with adjustable playback speed."],["Known limitations","Extracted text may omit diagrams, images, equations and complex reading order. Speech voices depend on your device and browser."]]],
+    "/contact": ["Contact", "Contact Voxora Access", "Questions about using the platform, accessibility barriers, privacy concerns or resource rights reports should have a clear route to the platform operator.", [["Technical support","Include the page you were using, what happened and the browser/device involved."],["Accessibility feedback","Describe the task you were trying to complete and the barrier you encountered."],["Privacy and copyright","Review the privacy and copyright pages. Operator contact details must be completed before public launch."]]],
+    "/preferences": ["Your experience", "Preferences and support", "Speech voices and recognition options depend on your browser and operating system.", [["Speech support","Use the reading view to listen to extracted text."],["Reading speed","Adjust playback speed to suit your preference."],["Browser settings","Select voices in your browser or operating-system settings. Always-on speech recognition is not enabled in this prototype."]]],
+};
+const policyCopy = {
+    "/privacy": ["Privacy notice","This notice explains how Voxora Access handles information when you browse the platform, create an account, upload resources or use sharing and reading features.","Account information includes name, email, password hash and account creation time. Resource information includes title, description, file metadata, uploaded bytes and extracted text where supported. Library and sharing records associate resources with accounts.","The application uses information to authenticate accounts, store and display resources, search public materials, enforce access permissions and operate the service. Public resources are discoverable; private resources are intended for their owner and accounts explicitly shared with.","The current application stores account data, resource metadata, extracted text and uploaded file bytes in PostgreSQL and is configured for hosted database and Render web hosting. Operator details and provider information should be completed before public launch. This draft is not legal compliance certification."],
+    "/terms": ["Terms of use","By using Voxora Access, you agree to use the platform lawfully and respectfully.","You are responsible for the materials you upload and must have the rights or permission needed to store and share them. Choose public or private visibility carefully. Do not upload confidential information unless you have authority and understand the consequences.","The platform is provided on an as-available basis. Extracted text may be incomplete or inaccurate and may omit diagrams, tables, equations, images or reading order. Verify important information against the original material.","These terms may be updated as the service changes. Contact the platform operator for questions."],
+    "/cookies": ["Cookie notice","The application uses an essential session cookie to maintain sign-in state and security-related session information.","The session cookie is configured as HTTP-only and SameSite=Lax; the Secure flag is enabled when the application is configured for HTTPS. Blocking essential session cookies may prevent sign-in and account features from working properly.","The reading view uses browser speech synthesis when available. This feature is not described as a cookie. The prototype does not currently provide an analytics or advertising-cookie consent interface."],
+    "/acceptable-use": ["Acceptable use policy","Voxora Access is intended to support learning and resource sharing. Everyone using the platform must act lawfully, respectfully and in a way that protects other users.","Do not upload materials you lack permission to distribute, distribute malware, harass others, publish private information without authority, attempt unauthorized access, interfere with platform availability or bypass security controls.","Check content and permissions before uploading. Select public visibility only when you intend the material to be discoverable. Private sharing is limited to selected accounts, but the service is not a secure vault for highly sensitive information."],
+    "/copyright": ["Copyright and content reports","Users must upload and share only materials they own or are authorized to use and distribute.","A report should identify the resource, describe the work or right involved, explain why the use is unauthorized and include reliable contact details and supporting information where applicable.","The operator may request more information, restrict access while reviewing a credible report, notify the uploader where appropriate, or restore material if a report is not substantiated. This is not a formal statutory notice-and-counter-notice procedure."]
+};
+function App() {
+    const path = window.location.pathname;
     const [data, setData] = useState(null);
     const [error, setError] = useState("");
-
+    const [speechStatus, setSpeechStatus] = useState("");
+    const [rate, setRate] = useState(1);
+    const [playing, setPlaying] = useState(false);
+    const user = window.voxoraUser;
+    const isDashboardArea = accountNav.some(([href]) => href === path) || path.startsWith("/resource/");
     useEffect(() => {
-        fetch("/api/dashboard", { headers: { Accept: "application/json" } })
-            .then((response) => {
-                if (!response.ok) throw new Error("We couldn't load your dashboard.");
-                return response.json();
-            })
-            .then(setData)
-            .catch((err) => setError(err.message));
-    }, []);
-
-    if (error) {
-        return <main className="react-dashboard-main"><div className="react-error" role="alert">{error} <button onClick={() => window.location.reload()}>Try again</button></div></main>;
-    }
-    if (!data) {
-        return <main className="react-dashboard-main"><div className="react-loading" role="status">Loading your dashboard…</div></main>;
-    }
-
-    const stats = [
-        ["Your uploads", data.stats.uploads, "Documents you've added"],
-        ["Public resources", data.stats.public, "Visible to the community"],
-        ["Saved in library", data.stats.saved, "Resources kept for later"],
-        ["Shared with you", data.stats.shared, "Resources others shared"],
-    ];
-
-    return (
-        <>
-            <Header user={data.user} />
-            <div className="react-dashboard-layout">
-                <aside className="react-sidebar">
-                    <div className="react-sidebar-label">YOUR WORKSPACE</div>
-                    <nav aria-label="Dashboard navigation">
-                        {workspaceLinks.map(([label, href, icon], index) => (
-                            <a key={href} className={index === 0 ? "active" : ""} href={href}>
-                                <span aria-hidden="true">{icon}</span>{label}
-                            </a>
-                        ))}
-                    </nav>
-                    <div className="react-sidebar-divider" />
-                    <div className="react-sidebar-label">PUBLIC INFORMATION</div>
-                    <nav aria-label="Public information">
-                        <a href="/about"><span aria-hidden="true">ⓘ</span>About Voxora</a>
-                        <a href="/how-it-works"><span aria-hidden="true">⌁</span>How it works</a>
-                        <a href="/accessibility"><span aria-hidden="true">◎</span>Accessibility</a>
-                        <a href="/contact"><span aria-hidden="true">✉</span>Contact support</a>
-                    </nav>
-                    <div className="react-sidebar-footer">Listen. Learn. Explore. Achieve.</div>
-                </aside>
-
-                <main className="react-dashboard-main">
-                    <div className="react-welcome">
-                        <div>
-                            <p className="react-eyebrow">YOUR LEARNING SPACE</p>
-                            <h1>Welcome back, {data.user.name.split(" ")[0]}.</h1>
-                            <p>Pick up where you left off or add something new to your library.</p>
-                        </div>
-                        <a className="react-primary-button" href="/upload">＋ Upload a resource</a>
-                    </div>
-
-                    <section className="react-stats" aria-label="Your activity summary">
-                        {stats.map(([label, value, note]) => (
-                            <article className="react-stat" key={label}>
-                                <span>{label}</span><strong>{value}</strong><small>{note}</small>
-                            </article>
-                        ))}
-                    </section>
-
-                    <div className="react-panels">
-                        <section className="react-panel">
-                            <div className="react-panel-heading">
-                                <div><p className="react-eyebrow">YOUR CONTENT</p><h2>Recent uploads</h2></div>
-                                <a href="/my-resources">View all →</a>
-                            </div>
-                            <ResourceList items={data.recent} empty="You haven't uploaded a resource yet." action={{ href: "/upload", label: "Upload your first resource" }} />
-                        </section>
-                        <section className="react-panel">
-                            <div className="react-panel-heading">
-                                <div><p className="react-eyebrow">YOUR COLLECTION</p><h2>Saved for later</h2></div>
-                                <a href="/library">My Library →</a>
-                            </div>
-                            <ResourceList items={data.saved} empty="Your library is waiting for its first resource." action={{ href: "/#resources", label: "Explore public resources" }} />
-                        </section>
-                    </div>
-
-                    <section className="react-quick-actions">
-                        <div>
-                            <p className="react-eyebrow">MAKE A MOVE</p>
-                            <h2>Quick actions</h2>
-                            <p>Everything you need to keep learning moving.</p>
-                        </div>
-                        <div className="react-action-list">
-                            <a href="/upload">Upload learning material <span>↗</span></a>
-                            <a href="/#resources">Discover public resources <span>↗</span></a>
-                            <a href="/shared-with-me">Open shared resources <span>↗</span></a>
-                        </div>
-                    </section>
-                    <footer className="react-dashboard-footer">
-                        <span>© {new Date().getFullYear()} Voxora Access</span>
-                        <div><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/cookies">Cookies</a><a href="/copyright">Copyright</a></div>
-                    </footer>
-                </main>
-            </div>
-        </>
-    );
+        fetch("/api/site?path=" + encodeURIComponent(path) + (window.location.search || ""), { headers: { Accept: "application/json" } })
+            .then((r) => { if (!r.ok) throw new Error("This page could not be loaded."); return r.json(); })
+            .then(setData).catch((e) => setError(e.message));
+    }, [path]);
+    useEffect(() => () => window.speechSynthesis?.cancel(), []);
+    const csrf = window.voxoraCsrf || "";
+    const flash = window.voxoraFlashMessages || [];
+    const signout = <form method="post" action="/signout"><input type="hidden" name="_csrf_token" value={csrf}/><button className="react-signout">Sign out</button></form>;
+    const Header = () => <header className="react-topbar"><a className="react-brand" href="/"><span className="react-brand-mark">V</span><span className="react-brand-copy"><strong>Voxora Access</strong><small>Knowledge within everyone's reach.</small></span></a><nav className="react-topbar-actions" aria-label="Main navigation">{nav.map(([href,label])=><a key={href} href={href}>{label}</a>)}</nav><div className="react-topbar-actions">{user ? <><a href="/dashboard">My workspace</a><span className="react-user">{user.name}</span>{signout}</> : <><a href="/signin">Sign in</a><a className="react-primary-button" href="/register">Create account</a></>}</div></header>;
+    const Footer = () => <footer className="react-site-footer"><div><b>Voxora Access</b><p>Listen. Learn. Explore. Achieve.</p></div><nav>{[...nav,...legal].map(([href,label])=><a key={href} href={href}>{label}</a>)}</nav><small>© {new Date().getFullYear()} Voxora Access. All rights reserved.</small></footer>;
+    const Sidebar = () => user && isDashboardArea ? <aside className="react-sidebar"><div className="react-sidebar-label">YOUR WORKSPACE</div><nav>{accountNav.map(([href,label])=><a key={href} className={path===href?"active":""} href={href}>{label}</a>)}</nav><div className="react-sidebar-divider"/><div className="react-sidebar-label">PUBLIC INFORMATION</div><nav>{nav.map(([href,label])=><a key={href} href={href}>{label}</a>)}</nav></aside> : null;
+    const Frame = ({children}) => <><Header/><div className={isDashboardArea && user ? "react-app-layout" : "react-public-layout"}><Sidebar/><main className="react-page-main">{flash.map((m,i)=><p key={i} className={"flash "+m.category} role="status">{m.message}</p>)}{children}</main></div><Footer/></>;
+    const Cards = ({items}) => <div className="react-feature-grid">{items.map(([title,body])=><article className="react-feature-card" key={title}><h2>{title}</h2><p>{body}</p></article>)}</div>;
+    const Resources = ({items,empty}) => items?.length ? <div className="react-card-grid">{items.map(r=><article className="react-content-card" key={r.id}><span className="react-filetype">{(r.extension||"FILE").toUpperCase()}</span><h2><a href={"/resource/"+r.id}>{r.title}</a></h2><p>{r.description || "A shared learning resource."}</p><small>{r.owner_name ? "Shared by "+r.owner_name : (r.visibility||"")} </small><a href={"/resource/"+r.id}>Open resource →</a></article>)}</div> : <div className="react-empty">{empty}</div>;
+    const FormField = ({label,...props}) => <label className="react-field">{label}<input {...props}/></label>;
+    const Dashboard = () => {
+        const [dash,setDash]=useState(null);
+        useEffect(()=>{fetch("/api/dashboard").then(r=>{if(!r.ok)throw new Error("Dashboard data unavailable");return r.json()}).then(setDash).catch(e=>setError(e.message))},[]);
+        if(!dash)return <p role="status">Loading your workspace…</p>;
+        return <><p className="react-eyebrow">YOUR LEARNING SPACE</p><h1>Welcome back, {dash.user.name.split(" ")[0]}.</h1><p>Pick up where you left off or add something new to your library.</p><a className="react-primary-button" href="/upload">＋ Upload a resource</a><section className="react-stats">{[["Your uploads",dash.stats.uploads],["Public resources",dash.stats.public],["Saved in library",dash.stats.saved],["Shared with you",dash.stats.shared]].map(([k,v])=><article className="react-stat" key={k}><span>{k}</span><strong>{v}</strong></article>)}</section><h2>Recent uploads</h2><Resources items={dash.recent} empty="You haven't uploaded a resource yet."/><h2>Saved for later</h2><Resources items={dash.saved} empty="Your library is waiting for its first resource."/></>;
+    };
+    if(error)return <Frame><div className="react-error" role="alert">{error} <a href="/">Return home</a></div></Frame>;
+    if(!data)return <div className="react-loading" role="status">Loading Voxora Access…</div>;
+    let content;
+    if(path==="/") content=<><section className="react-hero"><div><p className="react-eyebrow">KNOWLEDGE WITHIN EVERYONE'S REACH</p><h1>Learning, on your terms.</h1><p>Discover learning resources, organize your materials and listen when reading on screen isn't the easiest option.</p><div className="react-actions"><a className="react-primary-button" href="/register">Create your free account</a><a href="#resources">Explore resources ↓</a></div></div><div className="react-hero-art" aria-hidden="true">V<span>LISTEN · LEARN · EXPLORE</span></div></section><Cards items={[["Discover resources","Browse publicly shared study materials."],["Make it personal","Save useful materials in your own library."],["Choose how to read","Use the reading view and supported browser speech."]]}/><section id="resources"><div className="react-section-heading"><div><p className="react-eyebrow">OPEN KNOWLEDGE</p><h2>Explore public resources</h2></div><form className="react-search"><input name="q" defaultValue={data.query||""} placeholder="Search by title or topic" aria-label="Search resources"/><button className="react-primary-button">Search</button></form></div><Resources items={data.resources} empty="Public resources will appear here as the community shares learning materials."/></section></>;
+    else if(path==="/signin"||path==="/register") {const reg=path==="/register";content=<section className="react-auth"><div><p className="react-eyebrow">WELCOME TO VOXORA ACCESS</p><h1>Learning, on your terms.</h1><p>Keep resources close, discover shared materials, and listen when reading on screen isn't the easiest option.</p></div><form method="post" className="react-form"><h2>{reg?"Create your account":"Sign in to Voxora Access"}</h2><input type="hidden" name="_csrf_token" value={csrf}/>{reg&&<FormField label="Full name" name="name" autoComplete="name" required maxLength="80"/>}<FormField label="Email" name="email" type="email" autoComplete="email" required/><FormField label="Password" name="password" type="password" autoComplete={reg?"new-password":"current-password"} required minLength={reg?10:undefined}/>{reg&&<small>Use at least 10 characters.</small>}<button className="react-primary-button">{reg?"Create account":"Sign in"}</button><p>{reg?"Already registered? ":"New to Voxora Access? "}<a href={reg?"/signin":"/register"}>{reg?"Sign in":"Create an account"}</a></p></form></section>}
+    else if(path==="/dashboard")content=<Dashboard/>;
+    else if(path==="/upload")content=<><p className="react-eyebrow">SHARE KNOWLEDGE</p><h1>Upload a resource</h1><p>Add study materials for your own use or share them publicly.</p><form className="react-form" method="post" encType="multipart/form-data"><input type="hidden" name="_csrf_token" value={csrf}/><FormField as="input" label="Choose a file" name="file" type="file" required accept=".pdf,.docx,.pptx,.txt,.md,.rtf,.csv,.odt,.ods,.odp"/><small>PDF, DOCX, PPTX, TXT, MD, RTF, CSV, ODT, ODS or ODP. Maximum 20 MB by default.</small><FormField label="Resource title" name="title" maxLength="160" placeholder="e.g. Introduction to Biology"/><label className="react-field">Short description<textarea name="description" rows="4" maxLength="1000"/></label><fieldset><legend>Who can access it?</legend><label><input type="radio" name="visibility" value="public" defaultChecked/> Public</label><label><input type="radio" name="visibility" value="private"/> Private</label></fieldset><button className="react-primary-button">Upload resource</button></form></>;
+    else if(path==="/my-resources"||path==="/library"||path==="/shared-with-me")content=<><p className="react-eyebrow">YOUR WORKSPACE</p><h1>{path==="/my-resources"?"My uploads":path==="/library"?"My Library":"Shared with me"}</h1><p>{path==="/my-resources"?"Manage resources you've uploaded.":path==="/library"?"Saved resources, ready when you are.":"Private resources shared with your account."}</p><Resources items={data.resources} empty="Nothing to show here yet."/></>;
+    else if(path.startsWith("/resource/")&&data.resource){const r=data.resource;const read=path.endsWith("/read");content=read?<><p className="react-eyebrow">ACCESSIBLE READING VIEW</p><h1>{r.title}</h1><p>Extraction can change layout and omit diagrams or images.</p><div className="react-reader-tools"><button onClick={()=>{if(!r.extracted_text)return;window.speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(r.extracted_text);u.rate=Number(rate);u.onend=()=>setPlaying(false);window.speechSynthesis.speak(u);setPlaying(true);setSpeechStatus("Reading started.")}}>▶ Read aloud</button><button onClick={()=>{window.speechSynthesis.pause();setSpeechStatus("Reading paused.")}}>Pause</button><button onClick={()=>{window.speechSynthesis.resume();setSpeechStatus("Reading resumed.")}}>Resume</button><button onClick={()=>{window.speechSynthesis.cancel();setPlaying(false);setSpeechStatus("Reading stopped.")}}>Stop</button><label>Speed <input type="range" min=".6" max="1.5" step=".1" value={rate} onChange={e=>setRate(e.target.value)}/>{Number(rate).toFixed(1)}×</label></div><p aria-live="polite">{speechStatus}</p><article className="react-reading">{r.extracted_text||"Readable text could not be extracted. Download the original document."}</article><a href={"/resource/"+r.id+"/download"}>Download original</a></>:<><p><a href="/">Explore</a> / {r.title}</p><p className="react-eyebrow">{r.extension.toUpperCase()} FILE</p><h1>{r.title}</h1><p>{r.description||"No description provided."}</p><p>Owner: {r.owner_name} · {Math.round(r.size_bytes/1024)} KB · {r.visibility}</p><div className="react-actions"><a className="react-primary-button" href={"/resource/"+r.id+"/read"}>Open reading view</a><a href={"/resource/"+r.id+"/download"}>Download original</a></div><h2>Accessible text</h2><div className="react-reading">{r.extracted_text?.slice(0,5000)||"Voxora Access could not extract readable text. You can still download the original."}</div>{user&&<form method="post" action={"/resource/"+r.id+"/library"}><input type="hidden" name="_csrf_token" value={csrf}/><button className="react-primary-button">{r.in_library?"Remove from My Library":"Add to My Library"}</button></form>}{r.is_owner&&<><h2>Share this resource</h2><form method="post" action={"/resource/"+r.id+"/share"} className="react-form"><input type="hidden" name="_csrf_token" value={csrf}/><FormField label="Account email" name="email" type="email" required placeholder="student@example.edu"/><button className="react-primary-button">Share</button></form><form method="post" action={"/resource/"+r.id+"/delete"} onSubmit={e=>{if(!confirm("Delete this resource permanently?"))e.preventDefault()}}><input type="hidden" name="_csrf_token" value={csrf}/><button className="react-danger-button">Delete resource</button></form></>}</>}
+    else if(pageCopy[path]){const [eyebrow,title,lede,items]=pageCopy[path];content=<><p className="react-eyebrow">{eyebrow.toUpperCase()}</p><h1>{title}</h1><p className="react-lede">{lede}</p><Cards items={items}/><a className="react-primary-button" href="/register">Get started</a></>}
+    else if(policyCopy[path]){const [title,...paragraphs]=policyCopy[path];content=<article className="react-policy"><p className="react-eyebrow">PLATFORM POLICIES</p><h1>{title}</h1><p className="react-muted">Last updated: 31 October 2026</p>{paragraphs.map((p,i)=><p key={i}>{p}</p>)}</article>}
+    else content=<><h1>Page not found</h1><p>The page you're looking for isn't available.</p><a href="/">Return home</a></>;
+    return <Frame>{content}</Frame>;
 }
-
-const root = document.getElementById("voxora-dashboard-root");
-if (root) createRoot(root).render(<Dashboard />);
+createRoot(document.getElementById("voxora-app-root")).render(<App/>);
