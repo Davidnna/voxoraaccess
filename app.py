@@ -220,7 +220,16 @@ def resource(rid):
     r = (
         db()
         .execute(
-            "SELECT r.*,u.name owner_name FROM resources r JOIN users u ON u.id=r.owner_id WHERE r.id=%s",
+            """
+            SELECT
+                r.id, r.owner_id, r.title, r.description, r.original_name,
+                r.stored_name, r.extension, r.mime_type, r.size_bytes,
+                r.sha256, r.visibility, r.extracted_text, r.created_at,
+                u.name AS owner_name
+            FROM resources r
+            JOIN users u ON u.id = r.owner_id
+            WHERE r.id = %s
+            """,
             (rid,),
         )
         .fetchone()
@@ -394,12 +403,17 @@ def preview(rid):
     r = resource(rid)
     if not accessible(r, user()):
         abort(404)
-    if r["file_data"] is None:
-        abort(404)
-
     extension = (r["extension"] or "").lower()
     if extension in {"docx", "pptx"}:
-        preview_data = r.get("preview_data")
+        preview_row = (
+            db()
+            .execute(
+                "SELECT preview_data FROM resources WHERE id = %s",
+                (rid,),
+            )
+            .fetchone()
+        )
+        preview_data = preview_row["preview_data"] if preview_row else None
         if not preview_data:
             abort(415, "A PDF preview is not available for this document.")
         payload = bytes(preview_data)
@@ -415,7 +429,17 @@ def preview(rid):
         mimetype = inline_types.get(extension)
         if not mimetype:
             abort(415, "Inline preview is not available for this document type.")
-        payload = bytes(r["file_data"])
+        file_row = (
+            db()
+            .execute(
+                "SELECT file_data FROM resources WHERE id = %s",
+                (rid,),
+            )
+            .fetchone()
+        )
+        if not file_row or file_row["file_data"] is None:
+            abort(404)
+        payload = bytes(file_row["file_data"])
         preview_name = r["original_name"]
 
     response = send_file(
@@ -436,10 +460,18 @@ def download(rid):
     r = resource(rid)
     if not accessible(r, user()):
         abort(404)
-    if r["file_data"] is None:
+    file_row = (
+        db()
+        .execute(
+            "SELECT file_data FROM resources WHERE id = %s",
+            (rid,),
+        )
+        .fetchone()
+    )
+    if not file_row or file_row["file_data"] is None:
         abort(404)
     return send_file(
-        io.BytesIO(bytes(r["file_data"])),
+        io.BytesIO(bytes(file_row["file_data"])),
         mimetype=r["mime_type"],
         as_attachment=True,
         download_name=r["original_name"],
