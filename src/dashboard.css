@@ -1113,3 +1113,7 @@ body { overflow-x: hidden; }
     #voxora-app-root .react-skeleton-line { animation: none; }
     #voxora-app-root .react-scroll-top { scroll-behavior: auto; }
 }
+
+
+/* Embedded original-document viewer */
+.react-document-panel{margin:2rem 0;padding:1.25rem;border:1px solid #dce5df;border-radius:18px;background:#fffdf5}.react-document-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:1rem}.react-document-heading h2{margin:0 0 .35rem}.react-document-heading p{margin:0;color:#52645a}.react-document-heading a{font-weight:700}.react-document-frame{display:block;width:100%;height:min(78vh,900px);min-height:520px;border:1px solid #dce5df;border-radius:12px;background:#f5f7f5}.react-document-fallback{padding:2rem;border:1px dashed #b8c8be;border-radius:12px}.react-accessibility-note{padding:1rem;border-left:4px solid #007a78;background:#eef6f2;color:#263d32}@media(max-width:640px){.react-document-panel{padding:.8rem}.react-document-frame{height:70vh;min-height:420px}.react-document-heading{display:block}.react-document-heading a{display:inline-block;margin-top:.8rem}}
