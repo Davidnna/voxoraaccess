@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#12372A" />
+    <meta name="description" content="Voxora Access makes learning resources easier to discover, organize and access." />
+    <title>Voxora Access</title>
+    <link rel="icon" href="{{ url_for('static', filename='img/voxora-mark.svg') }}" type="image/svg+xml" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='dist/app.css') }}" />
+</head>
+<body>
+    <div id="voxora-app-root">
+        <div class="react-loading" role="status">Loading Voxora Access…</div>
+    </div>
+    <script>
+        window.voxoraInitialPath = {{ initial_path|tojson }};
+        window.voxoraCsrf = {{ csrf_value|tojson }};
+        window.voxoraUser = {{ ({"id": current_user.id, "name": current_user.name, "email": current_user.email} if current_user else none)|tojson }};
+        window.voxoraFlashMessages = {{ flash_messages|tojson }};
+    </script>
+    <script type="module" src="{{ url_for('static', filename='dist/app.js') }}"></script>
+</body>
+</html>
