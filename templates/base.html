@@ -4,138 +4,115 @@
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <meta name="theme-color" content="#12372A" />
-        <meta
-            name="description"
-            content="Voxora Access helps students discover, organize and listen to learning resources in a more accessible digital learning space."
-        />
+        <meta name="description" content="Voxora Access helps students discover, organize and listen to learning resources in a more accessible digital learning space." />
         <title>{% block title %}Explore{% endblock %} · Voxora Access</title>
-        <link
-            rel="icon"
-            href="{{ url_for('static', filename='img/voxora-mark.svg') }}"
-            type="image/svg+xml"
-        />
-        <link
-            rel="stylesheet"
-            href="{{ url_for('static', filename='css/style.css') }}"
-        />
-        <script
-            defer
-            src="{{ url_for('static', filename='js/voxora.js') }}"
-        ></script>
+        <link rel="icon" href="{{ url_for('static', filename='img/voxora-mark.svg') }}" type="image/svg+xml" />
+        <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+        <script defer src="{{ url_for('static', filename='js/voxora.js') }}"></script>
     </head>
     <body>
         <a class="skip" href="#main">Skip to main content</a>
         <header class="site-header">
             <div class="head">
                 <a class="brand" href="{{ url_for('index') }}">
-                    <img
-                        src="{{ url_for('static', filename='img/voxora-mark.svg') }}"
-                        alt=""
-                        width="42"
-                        height="42"
-                    />
-                    <span
-                        ><b>Voxora Access</b
-                        ><small>Knowledge within everyone's reach.</small></span
-                    >
+                    <img src="{{ url_for('static', filename='img/voxora-mark.svg') }}" alt="" width="42" height="42" />
+                    <span><b>Voxora Access</b><small>Knowledge within everyone's reach.</small></span>
                 </a>
-                {% if current_user %}
-                <nav aria-label="Student navigation" class="dashboard-topnav">
-                    <a href="{{ url_for('dashboard') }}">Dashboard</a>
-                    <a href="{{ url_for('index') }}">Explore</a>
-                    <a href="{{ url_for('library_page') }}">My Library</a>
-                    <a href="{{ url_for('my_resources') }}">My uploads</a>
-                    <a href="{{ url_for('shared_page') }}">Shared with me</a>
-                </nav>
-                <div class="account">
-                    <span>{{ current_user.name }}</span>
-                    <form method="post" action="{{ url_for('signout') }}">
-                        <input
-                            type="hidden"
-                            name="_csrf_token"
-                            value="{{ csrf_token() }}"
-                        />
-                        <button class="btn quiet" type="submit">
-                            Sign out
-                        </button>
-                    </form>
-                </div>
+                {% set dashboard_endpoints = ["dashboard", "upload", "my_resources", "library_page", "shared_page", "preferences"] %}
+                {% if current_user and request.endpoint in dashboard_endpoints %}
+                    <nav aria-label="Dashboard navigation" class="dashboard-topnav">
+                        <a href="{{ url_for('dashboard') }}">Dashboard</a>
+                        <a href="{{ url_for('upload') }}">Upload</a>
+                        <a href="{{ url_for('library_page') }}">My Library</a>
+                        <a href="{{ url_for('my_resources') }}">My uploads</a>
+                        <a href="{{ url_for('shared_page') }}">Shared with me</a>
+                        <a href="{{ url_for('preferences') }}">Preferences</a>
+                    </nav>
+                    <div class="account">
+                        <span>{{ current_user.name }}</span>
+                        <form method="post" action="{{ url_for('signout') }}">
+                            <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}" />
+                            <button class="btn quiet" type="submit">Sign out</button>
+                        </form>
+                    </div>
+                {% elif current_user %}
+                    <nav aria-label="Main navigation" class="public-nav">
+                        <a href="{{ url_for('index') }}">Home</a>
+                        <a href="{{ url_for('about') }}">About</a>
+                        <a href="{{ url_for('how_it_works') }}">How it works</a>
+                        <a href="{{ url_for('index') }}#resources">Explore</a>
+                        <a href="{{ url_for('accessibility') }}">Accessibility</a>
+                    </nav>
+                    <div class="account">
+                        <a class="btn quiet" href="{{ url_for('dashboard') }}">Dashboard</a>
+                        <form method="post" action="{{ url_for('signout') }}">
+                            <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}" />
+                            <button class="btn quiet" type="submit">Sign out</button>
+                        </form>
+                    </div>
                 {% else %}
-                <nav aria-label="Main navigation" class="public-nav">
-                    <a href="{{ url_for('about') }}">About</a>
-                    <a href="{{ url_for('how_it_works') }}">How it works</a>
-                    <a href="{{ url_for('index') }}#resources">Explore</a>
-                    <a href="{{ url_for('accessibility') }}">Accessibility</a>
-                </nav>
-                <div class="account">
-                    <a class="btn quiet" href="{{ url_for('signin') }}"
-                        >Sign in</a
-                    >
-                    <a class="btn primary" href="{{ url_for('register') }}"
-                        >Create account</a
-                    >
-                </div>
+                    <nav aria-label="Main navigation" class="public-nav">
+                        <a href="{{ url_for('index') }}">Home</a>
+                        <a href="{{ url_for('about') }}">About</a>
+                        <a href="{{ url_for('how_it_works') }}">How it works</a>
+                        <a href="{{ url_for('index') }}#resources">Explore</a>
+                        <a href="{{ url_for('accessibility') }}">Accessibility</a>
+                    </nav>
+                    <div class="account">
+                        <a class="btn quiet" href="{{ url_for('signin') }}">Sign in</a>
+                        <a class="btn primary" href="{{ url_for('register') }}">Create account</a>
+                    </div>
                 {% endif %}
             </div>
         </header>
         <main id="main" class="shell">
-            {% with msgs = get_flashed_messages(with_categories=true) %} {% if
-            msgs %}
-            <div aria-live="polite">
-                {% for cat, msg in msgs %}
-                <p class="flash {{ cat }}" role="status">{{ msg }}</p>
-                {% endfor %}
-            </div>
-            {% endif %} {% endwith %} {% block content %}{% endblock %}
+            {% with msgs = get_flashed_messages(with_categories=true) %}
+                {% if msgs %}
+                    <div aria-live="polite">
+                        {% for cat, msg in msgs %}
+                            <p class="flash {{ cat }}" role="status">{{ msg }}</p>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            {% endwith %}
+            {% block content %}{% endblock %}
         </main>
         <footer class="site-footer">
-            <div class="footer-main">
-                <div>
-                    <a class="brand footer-brand" href="{{ url_for('index') }}">
-                        <img
-                            src="{{ url_for('static', filename='img/voxora-mark.svg') }}"
-                            alt=""
-                            width="38"
-                            height="38"
-                        />
-                        <span
-                            ><b>Voxora Access</b
-                            ><small
-                                >Knowledge within everyone's reach.</small
-                            ></span
-                        >
-                    </a>
-                    <p>Listen. Learn. Explore. Achieve.</p>
-                </div>
-                <div class="footer-links">
-                    <div>
-                        <b>Discover</b
-                        ><a href="{{ url_for('about') }}">About the platform</a
-                        ><a href="{{ url_for('how_it_works') }}">How it works</a
-                        ><a href="{{ url_for('index') }}#resources"
-                            >Explore resources</a
-                        >
+            <div class="footer-inner">
+                <div class="footer-main">
+                    <div class="footer-identity">
+                        <a class="brand footer-brand" href="{{ url_for('index') }}">
+                            <img src="{{ url_for('static', filename='img/voxora-mark.svg') }}" alt="" width="38" height="38" />
+                            <span><b>Voxora Access</b><small>Knowledge within everyone's reach.</small></span>
+                        </a>
+                        <p>Listen. Learn. Explore. Achieve.</p>
                     </div>
-                    <div>
-                        <b>Help & access</b
-                        ><a href="{{ url_for('accessibility') }}"
-                            >Accessibility</a
-                        ><a href="{{ url_for('contact') }}">Contact</a>
-                    </div>
-                    <div>
-                        <b>Policies</b
-                        ><a href="{{ url_for('privacy') }}">Privacy notice</a
-                        ><a href="{{ url_for('terms') }}">Terms of use</a
-                        ><a href="{{ url_for('cookies') }}">Cookie notice</a
-                        ><a href="{{ url_for('acceptable_use') }}"
-                            >Acceptable use</a
-                        ><a href="{{ url_for('copyright') }}">Copyright</a>
+                    <div class="footer-links">
+                        <div>
+                            <b>Discover</b>
+                            <a href="{{ url_for('about') }}">About the platform</a>
+                            <a href="{{ url_for('how_it_works') }}">How it works</a>
+                            <a href="{{ url_for('index') }}#resources">Explore resources</a>
+                        </div>
+                        <div>
+                            <b>Help & access</b>
+                            <a href="{{ url_for('accessibility') }}">Accessibility</a>
+                            <a href="{{ url_for('contact') }}">Contact</a>
+                        </div>
+                        <div>
+                            <b>Policies</b>
+                            <a href="{{ url_for('privacy') }}">Privacy notice</a>
+                            <a href="{{ url_for('terms') }}">Terms of use</a>
+                            <a href="{{ url_for('cookies') }}">Cookie notice</a>
+                            <a href="{{ url_for('acceptable_use') }}">Acceptable use</a>
+                            <a href="{{ url_for('copyright') }}">Copyright</a>
+                        </div>
                     </div>
                 </div>
-            </div>
-            <div class="footer-bottom">
-                <span>© {{ now_year }} Voxora Access. All rights reserved.</span
-                ><span>Built to make learning materials easier to access.</span>
+                <div class="footer-bottom">
+                    <span>© {{ now_year }} Voxora Access. All rights reserved.</span>
+                    <span>Built to make learning materials easier to access.</span>
+                </div>
             </div>
         </footer>
     </body>
