@@ -1329,3 +1329,18 @@ footer a {
         gap: 8px;
     }
 }
+
+
+/* React dashboard occupies its own full-width application surface. */
+body:has(#voxora-dashboard-root) > .site-header,
+body:has(#voxora-dashboard-root) > #main > .flash,
+body:has(#voxora-dashboard-root) > .site-footer {
+    display: none;
+}
+body:has(#voxora-dashboard-root) > #main.shell {
+    width: 100%;
+    max-width: none;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+}
