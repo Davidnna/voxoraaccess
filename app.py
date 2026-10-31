@@ -13,6 +13,7 @@ from flask import (
     flash,
     abort,
     send_file,
+    jsonify,
 )
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
@@ -522,6 +523,26 @@ def privacy():
 def accessibility():
     return render_template("accessibility.html")
 
+
+
+@app.get("/api/dashboard")
+@login_required
+def dashboard_data():
+    uid = user()["id"]
+    stats = {
+        "uploads": db().execute("SELECT COUNT(*) AS total FROM resources WHERE owner_id=%s", (uid,)).fetchone()["total"],
+        "public": db().execute("SELECT COUNT(*) AS total FROM resources WHERE owner_id=%s AND visibility='public'", (uid,)).fetchone()["total"],
+        "saved": db().execute("SELECT COUNT(*) AS total FROM library WHERE user_id=%s", (uid,)).fetchone()["total"],
+        "shared": db().execute("SELECT COUNT(*) AS total FROM shares WHERE user_id=%s", (uid,)).fetchone()["total"],
+    }
+    recent = db().execute("SELECT id,title,extension,visibility,created_at FROM resources WHERE owner_id=%s ORDER BY created_at DESC LIMIT 5", (uid,)).fetchall()
+    saved = db().execute("SELECT r.id,r.title,r.extension FROM library l JOIN resources r ON r.id=l.resource_id WHERE l.user_id=%s ORDER BY l.created_at DESC LIMIT 5", (uid,)).fetchall()
+    return jsonify({
+        "user": {"name": user()["name"], "email": user()["email"]},
+        "stats": stats,
+        "recent": [dict(row) for row in recent],
+        "saved": [dict(row) for row in saved],
+    })
 
 @app.route("/dashboard")
 @login_required
