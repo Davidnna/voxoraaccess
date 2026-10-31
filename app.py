@@ -572,7 +572,7 @@ def site_data():
         rows = db().execute("SELECT id,title,description,extension,size_bytes,visibility,created_at FROM resources WHERE owner_id=%s ORDER BY created_at DESC", (current["id"],)).fetchall()
         payload["resources"] = [dict(row) for row in rows]
     elif path == "/library" and current:
-        rows = db().execute("SELECT r.id,r.title,r.description,r.extension,r.size_bytes,r.visibility,u.name owner_name FROM library l JOIN resources r ON r.id=l.resource_id JOIN users u ON u.id=r.owner_id WHERE l.user_id=%s ORDER BY l.created_at DESC", (current["id"],)).fetchall()
+        rows = db().execute("SELECT r.id,r.owner_id,r.title,r.description,r.extension,r.size_bytes,r.visibility,u.name owner_name FROM library l JOIN resources r ON r.id=l.resource_id JOIN users u ON u.id=r.owner_id WHERE l.user_id=%s ORDER BY l.created_at DESC", (current["id"],)).fetchall()
         payload["resources"] = [dict(row) for row in rows if accessible(row, current)]
     elif path == "/shared-with-me" and current:
         rows = db().execute("SELECT r.id,r.title,r.description,r.extension,r.size_bytes,r.visibility,u.name owner_name FROM shares s JOIN resources r ON r.id=s.resource_id JOIN users u ON u.id=r.owner_id WHERE s.user_id=%s ORDER BY s.created_at DESC", (current["id"],)).fetchall()
