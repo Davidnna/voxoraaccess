@@ -1,7 +1,8 @@
 FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
@@ -9,6 +10,8 @@ RUN apt-get update \
         libreoffice-impress \
         fonts-liberation \
         fonts-dejavu-core \
+        nodejs \
+        npm \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /opt/render/project/src
