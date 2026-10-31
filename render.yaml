@@ -3,7 +3,7 @@ services:
     name: voxoraaccess
     runtime: python
     plan: free
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install -r requirements.txt && npm install && npm run build
     startCommand: gunicorn --workers 2 --threads 4 --timeout 120 --bind 0.0.0.0:$PORT app:app
     healthCheckPath: /
     envVars:
