@@ -374,7 +374,7 @@ def preview(rid):
         conditional=True,
     )
     response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'self'; sandbox"
+    response.headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'self'"
     response.headers["Content-Disposition"] = "inline"
     return response
 
