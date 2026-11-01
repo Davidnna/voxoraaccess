@@ -881,7 +881,7 @@ def assistant_chat():
                 "messages": conversation,
                 "tools": tools_spec,
                 "tool_choice": "auto",
-                "temperature": 0.4,
+                "temperature": 1.0,
                 "max_tokens": 700,
             }).encode("utf-8")
             req = urllib.request.Request(
@@ -916,12 +916,19 @@ def assistant_chat():
                 })
         return jsonify({"reply": "I found some information, but couldn't finish that request. Could you narrow it down?"})
     except urllib.error.HTTPError as exc:
-        app.logger.warning("Groq request failed with status %s", exc.code)
+        error_body = exc.read().decode("utf-8", errors="replace")[:1800]
+        app.logger.warning("Groq API returned HTTP %s: %s", exc.code, error_body)
+        if exc.code == 401:
+            return jsonify({"error": "Voxora's AI key was rejected. Please check the GROQ_API_KEY in Render Environment."}), 502
+        if exc.code == 403:
+            return jsonify({"error": "Groq has denied access to this model or project. Check model access in your Groq Console."}), 502
         if exc.code == 429:
             return jsonify({"error": "Voxora's free AI usage limit has been reached for now. Please try again later."}), 503
-        return jsonify({"error": "Voxora couldn't reach its AI service. Please try again shortly."}), 502
-    except (urllib.error.URLError, TimeoutError, KeyError, ValueError):
-        app.logger.exception("Voxora assistant request failed")
+        if exc.code == 400:
+            return jsonify({"error": "Groq rejected the request settings. The Voxora team has logged the details."}), 502
+        return jsonify({"error": "Voxora's AI provider returned an error. Please try again shortly."}), 502
+    except (urllib.error.URLError, TimeoutError, KeyError, ValueError) as exc:
+        app.logger.exception("Voxora assistant request failed: %s", str(exc)[:500])
         return jsonify({"error": "Voxora couldn't complete that request. Please try again."}), 502
 
 
