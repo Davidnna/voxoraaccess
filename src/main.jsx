@@ -55,7 +55,7 @@ function App() {
         const anchor = event.target.closest("a[href]");
         if (!anchor || anchor.target || anchor.hasAttribute("download")) return;
         const url = new URL(anchor.href, window.location.origin);
-        if (url.origin !== window.location.origin || url.pathname.startsWith("/resource/") && /\\/(preview|download)$/.test(url.pathname)) return;
+        if (url.origin !== window.location.origin || url.pathname.startsWith("/resource/") && /\/(preview|download)$/.test(url.pathname)) return;
         if (url.pathname === window.location.pathname && url.search === window.location.search && url.hash) return;
         if (url.pathname.startsWith("/signout")) return;
         event.preventDefault();
