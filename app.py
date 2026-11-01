@@ -189,7 +189,7 @@ def render_template(template_name, *args, **kwargs):
 @app.before_request
 def check_csrf():
     if request.method == "POST":
-        supplied = request.form.get("_csrf_token", "")
+        supplied = request.form.get("_csrf_token", "") or request.headers.get("X-CSRF-Token", "")
         expected = session.get("_csrf", "")
         if (
             not supplied
@@ -621,6 +621,60 @@ def accessibility():
     return render_template("accessibility.html")
 
 
+
+
+@app.post("/api/auth/register")
+def api_register():
+    name = request.form.get("name", "").strip()[:80]
+    email = request.form.get("email", "").strip().lower()[:254]
+    password = request.form.get("password", "")
+    if not name or not email or len(password) < 10:
+        return jsonify({"error": "Enter your name and email, and use a password of at least 10 characters."}), 400
+    try:
+        db().execute(
+            "INSERT INTO users(name,email,password_hash,created_at) VALUES(%s,%s,%s,%s)",
+            (name, email, generate_password_hash(password), now()),
+        )
+        db().commit()
+    except Exception as exc:
+        db().rollback()
+        if "unique" in str(exc).lower():
+            return jsonify({"error": "An account with that email already exists."}), 409
+        raise
+    account = db().execute(
+        "SELECT id,name,email FROM users WHERE email=%s", (email,)
+    ).fetchone()
+    session.clear()
+    session["uid"] = account["id"]
+    csrf()
+    return jsonify({"user": dict(account), "redirect": "/dashboard"}), 201
+
+
+@app.post("/api/auth/signin")
+def api_signin():
+    email = request.form.get("email", "").strip().lower()
+    password = request.form.get("password", "")
+    account = db().execute(
+        "SELECT id,name,email,password_hash FROM users WHERE email=%s", (email,)
+    ).fetchone()
+    if not account or not check_password_hash(account["password_hash"], password):
+        return jsonify({"error": "Email or password was not recognised."}), 401
+    session.clear()
+    session["uid"] = account["id"]
+    csrf()
+    return jsonify({
+        "user": {"id": account["id"], "name": account["name"], "email": account["email"]},
+        "redirect": request.args.get("next", "/dashboard")
+        if request.args.get("next", "").startswith("/") and not request.args.get("next", "").startswith("//")
+        else "/dashboard",
+    })
+
+
+@app.post("/api/auth/signout")
+@login_required
+def api_signout():
+    session.clear()
+    return jsonify({"ok": True, "redirect": "/"})
 
 
 @app.get("/api/site")
