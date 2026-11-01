@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { BrowserRouter, useLocation, useNavigate } from "react-router-dom";
 import "./dashboard.css";
 
 const nav = [
@@ -26,23 +27,40 @@ const policyCopy = {
     "/copyright": ["Copyright and content reports","Users must upload and share only materials they own or are authorized to use and distribute.","A report should identify the resource, describe the work or right involved, explain why the use is unauthorized and include reliable contact details and supporting information where applicable.","The operator may request more information, restrict access while reviewing a credible report, notify the uploader where appropriate, or restore material if a report is not substantiated. This is not a formal statutory notice-and-counter-notice procedure."]
 };
 function App() {
-    const path = window.location.pathname;
+    const location = useLocation();
+    const navigate = useNavigate();
+    const path = location.pathname;
     const [data, setData] = useState(null);
     const [error, setError] = useState("");
     const user = window.voxoraUser;
     const isDashboardArea = Boolean(user) && (accountNav.some(([href]) => href === path) || path.startsWith("/resource/") || path === "/account");
     useEffect(() => {
-        fetch("/api/site?path=" + encodeURIComponent(path) + (window.location.search || ""), { headers: { Accept: "application/json" } })
+        let active = true;
+        setData(null);
+        setError("");
+        fetch("/api/site?path=" + encodeURIComponent(path) + (location.search || ""), { headers: { Accept: "application/json" } })
             .then((r) => { if (!r.ok) throw new Error("This page could not be loaded."); return r.json(); })
-            .then(setData).catch((e) => setError(e.message));
-    }, [path]);
+            .then((result) => { if (active) setData(result); })
+            .catch((e) => { if (active) setError(e.message); });
+        return () => { active = false; };
+    }, [path, location.search]);
     const csrf = window.voxoraCsrf || "";
     const flash = window.voxoraFlashMessages || [];
     const signout = <form method="post" action="/signout"><input type="hidden" name="_csrf_token" value={csrf}/><button className="react-signout">Sign out</button></form>;
     const Header = () => <header className={"react-topbar" + (isDashboardArea && user ? " react-workspace-topbar" : "")}><a className="react-brand" href={user && isDashboardArea ? "/dashboard" : "/"}><span className="react-brand-mark" aria-hidden="true">V</span><span className="react-brand-copy"><strong>Voxora Access</strong><small>{user && isDashboardArea ? "YOUR LEARNING WORKSPACE" : "Knowledge within everyone's reach."}</small></span></a>{user && isDashboardArea ? <div className="react-topbar-actions react-workspace-actions"><span className="react-user" aria-label="Signed in as">{user.name}</span><a className="react-account-link" href="/account">Account</a>{signout}</div> : <><nav className="react-topbar-actions" aria-label="Main navigation">{nav.map(([href,label])=><a key={href} href={href}>{label}</a>)}</nav><div className="react-topbar-actions">{user ? <><a href="/dashboard">My workspace</a><span className="react-user">{user.name}</span>{signout}</> : <><a href="/signin">Sign in</a><a className="react-primary-button" href="/register">Create account</a></>}</div></>}</header>;
     const Footer = () => <footer className={"react-site-footer" + (isDashboardArea && user ? " react-workspace-footer" : "")}><div><b>Voxora Access</b><p>{isDashboardArea && user ? "Your learning space, built for access." : "Listen. Learn. Explore. Achieve."}</p></div><nav aria-label="Footer navigation">{(isDashboardArea && user ? [] : [...nav,...legal]).map(([href,label])=><a key={href} href={href}>{label}</a>)}</nav><small>© {new Date().getFullYear()} Voxora Access. All rights reserved.</small></footer>;
     const Sidebar = () => user && isDashboardArea ? <aside className="react-sidebar" aria-label="Workspace navigation"><div className="react-sidebar-label">WORKSPACE</div><nav>{accountNav.map(([href,label])=><a key={href} className={path===href?"active":""} aria-current={path===href?"page":undefined} href={href}>{label}</a>)}</nav><div className="react-sidebar-divider"/><div className="react-sidebar-label">ACCOUNT</div><nav><a className={path==="/account"?"active":""} aria-current={path==="/account"?"page":undefined} href="/account">Account settings</a><a href="/signout" onClick={(event)=>{event.preventDefault();document.getElementById("voxora-signout-form")?.requestSubmit();}}>Sign out</a></nav></aside> : null;
-    const Frame = ({children}) => <div className="react-site-frame"><a className="react-skip-link" href="#main-content">Skip to main content</a><Header/><div className={isDashboardArea && user ? "react-app-layout" : "react-public-layout"}><Sidebar/><main id="main-content" tabIndex="-1" className="react-page-main">{flash.map((m,i)=><p key={i} className={"flash "+m.category} role="status">{m.message}</p>)}{children}</main></div><Footer/><button className="react-scroll-top" type="button" aria-label="Scroll to top" title="Scroll to top" onClick={()=>window.scrollTo({top:0,behavior:window.matchMedia("(prefers-reduced-motion: reduce)").matches?"auto":"smooth"})}>↑<span>Top</span></button><form id="voxora-signout-form" method="post" action="/signout" hidden><input type="hidden" name="_csrf_token" value={csrf}/></form></div>;
+    const Frame = ({children}) => <div className="react-site-frame" onClick={(event) => {
+        if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+        const anchor = event.target.closest("a[href]");
+        if (!anchor || anchor.target || anchor.hasAttribute("download")) return;
+        const url = new URL(anchor.href, window.location.origin);
+        if (url.origin !== window.location.origin || url.pathname.startsWith("/resource/") && /\\/(preview|download)$/.test(url.pathname)) return;
+        if (url.pathname === window.location.pathname && url.search === window.location.search && url.hash) return;
+        if (url.pathname.startsWith("/signout")) return;
+        event.preventDefault();
+        navigate(url.pathname + url.search + url.hash);
+    }}><a className="react-skip-link" href="#main-content">Skip to main content</a><Header/><div className={isDashboardArea && user ? "react-app-layout" : "react-public-layout"}><Sidebar/><main id="main-content" tabIndex="-1" className="react-page-main">{flash.map((m,i)=><p key={i} className={"flash "+m.category} role="status">{m.message}</p>)}{children}</main></div><Footer/><button className="react-scroll-top" type="button" aria-label="Scroll to top" title="Scroll to top" onClick={()=>window.scrollTo({top:0,behavior:window.matchMedia("(prefers-reduced-motion: reduce)").matches?"auto":"smooth"})}>↑<span>Top</span></button><form id="voxora-signout-form" method="post" action="/signout" hidden><input type="hidden" name="_csrf_token" value={csrf}/></form></div>;
     const Cards = ({items}) => <div className="react-feature-grid">{items.map(([title,body])=><article className="react-feature-card" key={title}><h2>{title}</h2><p>{body}</p></article>)}</div>;
     const Resources = ({items,empty}) => items?.length ? <div className="react-card-grid">{items.map(r=><article className="react-content-card" key={r.id}><span className="react-filetype">{(r.extension||"FILE").toUpperCase()}</span><h2><a href={"/resource/"+r.id}>{r.title}</a></h2><p>{r.description || "A shared learning resource."}</p><small>{r.owner_name ? "Shared by "+r.owner_name : (r.visibility||"")} </small><a href={"/resource/"+r.id}>Open resource →</a></article>)}</div> : <div className="react-empty">{empty}</div>;
     const FormField = ({label,...props}) => <label className="react-field">{label}<input {...props}/></label>;
@@ -67,4 +85,4 @@ function App() {
     else content=<><h1>Page not found</h1><p>The page you're looking for isn't available.</p><a href="/">Return home</a></>;
     return <Frame>{content}</Frame>;
 }
-createRoot(document.getElementById("voxora-app-root")).render(<App/>);
+createRoot(document.getElementById("voxora-app-root")).render(<BrowserRouter><App/></BrowserRouter>);
