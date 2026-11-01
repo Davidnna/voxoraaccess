@@ -1,4 +1,4 @@
-import os, secrets, hashlib, re, io, subprocess, tempfile
+import os, secrets, hashlib, re, io, subprocess, tempfile, json, urllib.request, urllib.error
 from pathlib import Path
 from functools import wraps
 from datetime import datetime, timezone
@@ -728,6 +728,201 @@ def site_data():
                 ).fetchone()),
             }
     return jsonify(payload)
+
+
+
+
+def voxora_assistant_tool(name, arguments, current_user):
+    """Run only read-only resource tools, scoped to the signed-in account."""
+    if name == "search_resources":
+        query = str(arguments.get("query", "")).strip()[:100]
+        term = "%" + query + "%"
+        rows = db().execute(
+            """
+            SELECT DISTINCT r.id,r.title,r.description,r.extension,r.visibility,
+                   u.name owner_name
+            FROM resources r JOIN users u ON u.id=r.owner_id
+            LEFT JOIN shares s ON s.resource_id=r.id AND s.user_id=%s
+            WHERE (r.visibility='public' OR r.owner_id=%s OR s.user_id=%s)
+              AND (%s='' OR r.title ILIKE %s OR r.description ILIKE %s
+                   OR r.extracted_text ILIKE %s)
+            ORDER BY r.title LIMIT 8
+            """,
+            (
+                current_user["id"] if current_user else -1,
+                current_user["id"] if current_user else -1,
+                current_user["id"] if current_user else -1,
+                query, term, term, term,
+            ),
+        ).fetchall()
+        return [
+            {
+                "id": row["id"], "title": row["title"],
+                "description": row["description"][:240],
+                "type": row["extension"], "visibility": row["visibility"],
+                "owner": row["owner_name"],
+                "url": f"/resource/{row['id']}",
+            }
+            for row in rows
+        ]
+    if name == "list_my_resources":
+        if not current_user:
+            return {"error": "Sign in to view your personal resources."}
+        rows = db().execute(
+            """
+            SELECT id,title,description,extension,visibility
+            FROM resources WHERE owner_id=%s ORDER BY created_at DESC LIMIT 10
+            """,
+            (current_user["id"],),
+        ).fetchall()
+        return [
+            {
+                "id": row["id"], "title": row["title"],
+                "description": row["description"][:240],
+                "type": row["extension"], "visibility": row["visibility"],
+                "url": f"/resource/{row['id']}",
+            }
+            for row in rows
+        ]
+    if name == "get_resource_details":
+        rid = int(arguments.get("resource_id", 0))
+        row = resource(rid)
+        if not accessible(row, current_user):
+            return {"error": "That resource is not available to this account."}
+        excerpt = (row["extracted_text"] or "")[:9000]
+        return {
+            "id": row["id"], "title": row["title"],
+            "description": row["description"],
+            "type": row["extension"], "owner": row["owner_name"],
+            "visibility": row["visibility"],
+            "text_excerpt": excerpt,
+            "url": f"/resource/{row['id']}/read",
+            "excerpt_truncated": len(row["extracted_text"] or "") > 9000,
+        }
+    return {"error": "Unsupported action."}
+
+
+@app.post("/api/assistant/chat")
+def assistant_chat():
+    if not os.environ.get("GROQ_API_KEY"):
+        return jsonify({"error": "The AI service is not configured yet. Please try again later."}), 503
+    payload = request.get_json(silent=True) or {}
+    messages = payload.get("messages", [])
+    if not isinstance(messages, list) or not messages:
+        return jsonify({"error": "Send a message to get started."}), 400
+    safe_messages = []
+    for item in messages[-12:]:
+        if not isinstance(item, dict) or item.get("role") not in ("user", "assistant"):
+            continue
+        text = str(item.get("content", ""))[:3000]
+        if text.strip():
+            safe_messages.append({"role": item["role"], "content": text})
+    if not safe_messages or safe_messages[-1]["role"] != "user":
+        return jsonify({"error": "A new user message is required."}), 400
+
+    current_user = user()
+    identity = (
+        f"The signed-in student is {current_user['name']}."
+        if current_user else "The visitor is not signed in."
+    )
+    system_prompt = (
+        "You are Voxora, a warm, patient, conversational accessibility assistant "
+        "for Voxora Access, a university learning-resource sharing prototype. "
+        "Speak naturally and concisely. Understand follow-up questions and corrections "
+        "using the supplied conversation. Help students discover and understand study "
+        "materials. You can search resources, list the signed-in student's own uploads, "
+        "and retrieve accessible extracted text from a resource using the available tools. "
+        "Never claim to have uploaded, saved, shared, deleted, or changed anything: those "
+        "actions are not enabled. Never reveal private resources; rely only on tool results. "
+        "If a visitor is signed out, explain when sign-in is required. When you find a "
+        "resource, include its title and relative link. When explaining document content, "
+        "make clear if only an extracted-text excerpt is available. Do not invent facts. "
+        + identity
+    )
+    tools_spec = [
+        {
+            "type": "function",
+            "function": {
+                "name": "search_resources",
+                "description": "Search public resources and resources this signed-in user can access.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {"query": {"type": "string"}},
+                    "required": ["query"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "list_my_resources",
+                "description": "List the signed-in user's own uploaded resources.",
+                "parameters": {"type": "object", "properties": {}},
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "get_resource_details",
+                "description": "Get the description and extracted text excerpt for a resource the user can access.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {"resource_id": {"type": "integer"}},
+                    "required": ["resource_id"],
+                },
+            },
+        },
+    ]
+    conversation = [{"role": "system", "content": system_prompt}] + safe_messages
+    try:
+        for _ in range(4):
+            body = json.dumps({
+                "model": os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile"),
+                "messages": conversation,
+                "tools": tools_spec,
+                "tool_choice": "auto",
+                "temperature": 0.4,
+                "max_tokens": 700,
+            }).encode("utf-8")
+            req = urllib.request.Request(
+                "https://api.groq.com/openai/v1/chat/completions",
+                data=body,
+                headers={
+                    "Authorization": "Bearer " + os.environ["GROQ_API_KEY"],
+                    "Content-Type": "application/json",
+                },
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=35) as response:
+                result = json.loads(response.read().decode("utf-8"))
+            message = result["choices"][0]["message"]
+            if not message.get("tool_calls"):
+                return jsonify({"reply": message.get("content") or "I'm here. What would you like to explore?"})
+            conversation.append(message)
+            for call in message["tool_calls"]:
+                function = call.get("function", {})
+                try:
+                    arguments = json.loads(function.get("arguments") or "{}")
+                    tool_result = voxora_assistant_tool(
+                        function.get("name"), arguments, current_user
+                    )
+                except Exception:
+                    app.logger.exception("Voxora assistant tool failed")
+                    tool_result = {"error": "I couldn't complete that lookup."}
+                conversation.append({
+                    "role": "tool",
+                    "tool_call_id": call["id"],
+                    "content": json.dumps(tool_result, ensure_ascii=False),
+                })
+        return jsonify({"reply": "I found some information, but couldn't finish that request. Could you narrow it down?"})
+    except urllib.error.HTTPError as exc:
+        app.logger.warning("Groq request failed with status %s", exc.code)
+        if exc.code == 429:
+            return jsonify({"error": "Voxora's free AI usage limit has been reached for now. Please try again later."}), 503
+        return jsonify({"error": "Voxora couldn't reach its AI service. Please try again shortly."}), 502
+    except (urllib.error.URLError, TimeoutError, KeyError, ValueError):
+        app.logger.exception("Voxora assistant request failed")
+        return jsonify({"error": "Voxora couldn't complete that request. Please try again."}), 502
 
 
 @app.get("/api/dashboard")
