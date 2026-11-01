@@ -877,7 +877,7 @@ def assistant_chat():
     try:
         for _ in range(4):
             body = json.dumps({
-                "model": os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile"),
+                "model": os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b"),
                 "messages": conversation,
                 "tools": tools_spec,
                 "tool_choice": "auto",
