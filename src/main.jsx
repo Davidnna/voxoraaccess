@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, useLocation, useNavigate } from "react-router-dom";
 import "./dashboard.css";
@@ -26,6 +26,203 @@ const policyCopy = {
     "/acceptable-use": ["Acceptable use policy","Voxora Access is intended to support learning and resource sharing. Everyone using the platform must act lawfully, respectfully and in a way that protects other users.","Do not upload materials you lack permission to distribute, distribute malware, harass others, publish private information without authority, attempt unauthorized access, interfere with platform availability or bypass security controls.","Check content and permissions before uploading. Select public visibility only when you intend the material to be discoverable. Private sharing is limited to selected accounts, but the service is not a secure vault for highly sensitive information."],
     "/copyright": ["Copyright and content reports","Users must upload and share only materials they own or are authorized to use and distribute.","A report should identify the resource, describe the work or right involved, explain why the use is unauthorized and include reliable contact details and supporting information where applicable.","The operator may request more information, restrict access while reviewing a credible report, notify the uploader where appropriate, or restore material if a report is not substantiated. This is not a formal statutory notice-and-counter-notice procedure."]
 };
+
+function VoiceAssistant() {
+    const [open, setOpen] = useState(false);
+    const [active, setActive] = useState(false);
+    const [muted, setMuted] = useState(false);
+    const [speaking, setSpeaking] = useState(false);
+    const [busy, setBusy] = useState(false);
+    const [draft, setDraft] = useState("");
+    const [notice, setNotice] = useState("");
+    const [messages, setMessages] = useState([
+        { role: "assistant", content: "Hello, I'm Voxora. I can help you find learning resources and understand their contents. What would you like to do?" }
+    ]);
+    const recognitionRef = useRef(null);
+    const activeRef = useRef(false);
+    const mutedRef = useRef(false);
+    const messagesRef = useRef(messages);
+    const busyRef = useRef(false);
+
+    useEffect(() => { messagesRef.current = messages; }, [messages]);
+    useEffect(() => { activeRef.current = active; }, [active]);
+    useEffect(() => { mutedRef.current = muted; }, [muted]);
+
+    const speak = (text) => {
+        if (!("speechSynthesis" in window) || mutedRef.current) return;
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.rate = 1;
+        utterance.onstart = () => setSpeaking(true);
+        utterance.onend = () => setSpeaking(false);
+        utterance.onerror = () => setSpeaking(false);
+        window.speechSynthesis.speak(utterance);
+    };
+
+    const sendMessage = async (rawText) => {
+        const text = rawText.trim();
+        if (!text || busyRef.current) return;
+        if (/^(voxora[,. ]+)?(mute yourself|mute|stop listening)$/i.test(text)) {
+            setMuted(true);
+            mutedRef.current = true;
+            setNotice("Microphone muted. Use the Unmute button to resume listening.");
+            recognitionRef.current?.stop();
+            window.speechSynthesis?.cancel();
+            setSpeaking(false);
+            return;
+        }
+        if (/^(voxora[,. ]+)?(stop speaking|be quiet)$/i.test(text)) {
+            window.speechSynthesis?.cancel();
+            setSpeaking(false);
+            return;
+        }
+        const next = [...messagesRef.current, { role: "user", content: text }];
+        setMessages(next);
+        messagesRef.current = next;
+        setDraft("");
+        setBusy(true);
+        busyRef.current = true;
+        setNotice("");
+        try {
+            const response = await fetch("/api/assistant/chat", {
+                method: "POST",
+                headers: {"Content-Type": "application/json", "X-CSRF-Token": window.voxoraCsrf || "", Accept: "application/json"},
+                credentials: "same-origin",
+                body: JSON.stringify({ messages: next.slice(-12) })
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.error || "Voxora couldn't respond.");
+            const answer = { role: "assistant", content: result.reply || "I'm here. What would you like to explore?" };
+            const updated = [...next, answer];
+            setMessages(updated);
+            messagesRef.current = updated;
+            speak(answer.content);
+        } catch (error) {
+            setNotice(error.message);
+        } finally {
+            setBusy(false);
+            busyRef.current = false;
+        }
+    };
+
+    const startListening = () => {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+            setNotice("Speech recognition isn't available in this browser. You can still type to Voxora.");
+            return;
+        }
+        if (recognitionRef.current) {
+            activeRef.current = true;
+            setActive(true);
+            setMuted(false);
+            mutedRef.current = false;
+            try { recognitionRef.current.start(); } catch (_) {}
+            return;
+        }
+        const recognition = new SpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = false;
+        recognition.lang = "en-NG";
+        recognition.onresult = (event) => {
+            for (let i = event.resultIndex; i < event.results.length; i += 1) {
+                if (event.results[i].isFinal) {
+                    const transcript = event.results[i][0].transcript.trim();
+                    if (transcript) sendMessage(transcript);
+                }
+            }
+        };
+        recognition.onerror = (event) => {
+            if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+                setNotice("Microphone permission was denied. Allow microphone access in your browser settings, then try again.");
+                activeRef.current = false;
+                setActive(false);
+            } else if (event.error !== "no-speech" && event.error !== "aborted") {
+                setNotice("Speech recognition paused. You can continue by typing or restart the microphone.");
+            }
+        };
+        recognition.onend = () => {
+            if (activeRef.current && !mutedRef.current) {
+                try { recognition.start(); } catch (_) {}
+            }
+        };
+        recognitionRef.current = recognition;
+        activeRef.current = true;
+        mutedRef.current = false;
+        setActive(true);
+        setMuted(false);
+        setNotice("Listening while this session is active. You can mute at any time.");
+        try { recognition.start(); } catch (_) {
+            setNotice("Couldn't start the microphone. Check browser permission and try again.");
+        }
+    };
+
+    const mute = () => {
+        mutedRef.current = true;
+        setMuted(true);
+        recognitionRef.current?.stop();
+        window.speechSynthesis?.cancel();
+        setSpeaking(false);
+        setNotice("Microphone muted. Select Unmute to resume.");
+    };
+    const unmute = () => {
+        mutedRef.current = false;
+        setMuted(false);
+        setNotice("");
+        if (activeRef.current) {
+            try { recognitionRef.current?.start(); } catch (_) {}
+        } else {
+            startListening();
+        }
+    };
+    const endSession = () => {
+        activeRef.current = false;
+        mutedRef.current = false;
+        setActive(false);
+        setMuted(false);
+        recognitionRef.current?.stop();
+        recognitionRef.current = null;
+        window.speechSynthesis?.cancel();
+        setSpeaking(false);
+        setNotice("Voice session ended. Your typed conversation remains here.");
+    };
+
+    useEffect(() => () => {
+        activeRef.current = false;
+        recognitionRef.current?.stop();
+        window.speechSynthesis?.cancel();
+    }, []);
+
+    return <div className="voxora-assistant-root">
+        {open && <section className="voxora-assistant-panel" aria-label="Voxora voice assistant">
+            <header className="voxora-assistant-header">
+                <div><strong>Voxora assistant</strong><span>{active ? (muted ? "Microphone muted" : "Voice session active") : "Ready when you are"}</span></div>
+                <button type="button" aria-label="Close assistant panel" onClick={() => setOpen(false)}>×</button>
+            </header>
+            <div className="voxora-assistant-messages" role="log" aria-live="polite" aria-relevant="additions">
+                {messages.map((message, index) => <article key={index} className={"voxora-message " + message.role}>
+                    <b>{message.role === "assistant" ? "Voxora" : "You"}</b><p>{message.content}</p>
+                </article>)}
+                {busy && <p className="voxora-assistant-status" role="status">Voxora is thinking…</p>}
+            </div>
+            {notice && <p className="voxora-assistant-notice" role="status">{notice}</p>}
+            <form className="voxora-assistant-compose" onSubmit={(event) => { event.preventDefault(); sendMessage(draft); }}>
+                <label className="sr-only" htmlFor="voxora-assistant-input">Message Voxora</label>
+                <input id="voxora-assistant-input" value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Ask Voxora something…" maxLength={3000}/>
+                <button type="submit" disabled={busy || !draft.trim()}>Send</button>
+            </form>
+            <div className="voxora-assistant-controls">
+                {!active ? <button type="button" onClick={startListening}>Start voice</button> : muted ? <button type="button" onClick={unmute}>Unmute</button> : <button type="button" onClick={mute}>Mute microphone</button>}
+                <button type="button" onClick={() => { window.speechSynthesis?.cancel(); setSpeaking(false); }}>Stop speaking</button>
+                {active && <button type="button" onClick={endSession}>End session</button>}
+            </div>
+            <p className="voxora-assistant-footnote">Your microphone starts only when you choose Start voice. Browser speech recognition availability varies.</p>
+        </section>}
+        <button className="voxora-assistant-launcher" type="button" aria-expanded={open} aria-label={open ? "Close Voxora assistant" : "Open Voxora assistant"} onClick={() => setOpen((value) => !value)}>
+            <span aria-hidden="true">◖</span> {active && !muted ? "Listening" : "Ask Voxora"}
+        </button>
+    </div>;
+}
+
 function App() {
     const location = useLocation();
     const navigate = useNavigate();
@@ -103,4 +300,4 @@ function App() {
     else content=<><h1>Page not found</h1><p>The page you're looking for isn't available.</p><a href="/">Return home</a></>;
     return <Frame>{content}</Frame>;
 }
-createRoot(document.getElementById("voxora-app-root")).render(<BrowserRouter><App/></BrowserRouter>);
+createRoot(document.getElementById("voxora-app-root")).render(<BrowserRouter><><App/><VoiceAssistant/></></BrowserRouter>);
