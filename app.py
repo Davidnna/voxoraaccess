@@ -647,7 +647,7 @@ def api_register():
     session.clear()
     session["uid"] = account["id"]
     csrf()
-    return jsonify({"user": dict(account), "redirect": "/dashboard"}), 201
+    return jsonify({"user": dict(account), "csrf": csrf(), "redirect": "/dashboard"}), 201
 
 
 @app.post("/api/auth/signin")
@@ -664,6 +664,7 @@ def api_signin():
     csrf()
     return jsonify({
         "user": {"id": account["id"], "name": account["name"], "email": account["email"]},
+        "csrf": csrf(),
         "redirect": request.args.get("next", "/dashboard")
         if request.args.get("next", "").startswith("/") and not request.args.get("next", "").startswith("//")
         else "/dashboard",
