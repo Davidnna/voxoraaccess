@@ -300,8 +300,17 @@ function VoiceAssistant() {
         // Attempt voice activation on page arrival. Browser permission and user-gesture
         // policies may require the user to press the accessible start control.
         const timer = window.setTimeout(() => startListening(), 500);
+        const welcomeTimer = window.setTimeout(() => {
+            try {
+                if (!window.localStorage.getItem("voxora-welcomed-v1")) {
+                    window.localStorage.setItem("voxora-welcomed-v1", "1");
+                    speak("Hello, welcome to Voxora Access. I am Voxora, your voice-powered website assistant. I can help you explore the website, find and manage learning resources, understand pages, and complete actions here. You can interrupt me whenever you need. After this welcome, I will stay quiet until you speak to me.");
+                }
+            } catch (_) {}
+        }, 1300);
         return () => {
             window.clearTimeout(timer);
+            window.clearTimeout(welcomeTimer);
             activeRef.current = false;
             recognitionRef.current?.stop();
             window.speechSynthesis?.cancel();
