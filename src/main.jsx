@@ -88,9 +88,9 @@ function VoiceAssistant() {
                 }
             };
             recognition.onend = () => {
-                if (activeRef.current && !mutedRef.current && !speakingRef.current && !busyRef.current) {
+                if (activeRef.current && !mutedRef.current) {
                     window.setTimeout(() => {
-                        if (activeRef.current && !mutedRef.current && !speakingRef.current && !busyRef.current) {
+                        if (activeRef.current && !mutedRef.current) {
                             try { recognition.start(); } catch (_) {}
                         }
                     }, 350);
@@ -109,7 +109,7 @@ function VoiceAssistant() {
     };
 
     const resumeListening = () => {
-        if (!activeRef.current || mutedRef.current || speakingRef.current || busyRef.current) return;
+        if (!activeRef.current || mutedRef.current || busyRef.current) return;
         try { recognitionRef.current?.start(); } catch (_) {}
     };
 
