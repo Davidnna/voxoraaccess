@@ -173,13 +173,46 @@ function VoiceAssistant() {
             { pattern: /^(go to|open|show|take me to) (the )?(sign in|login) page$/, path: "/signin" },
             { pattern: /^(go to|open|show|take me to) (the )?(register|sign up|create account) page$/, path: "/register" },
         ];
-        const destination = destinations.find((item) => item.pattern.test(command));
+        const pageAliases = [
+            ...nav.map(([path, label]) => [path, label]),
+            ...accountNav.map(([path, label]) => [path, label]),
+            ...legal.map(([path, label]) => [path, label]),
+            ["/account", "account"], ["/account", "account settings"], ["/account", "profile"],
+            ["/signin", "sign in"], ["/signin", "login"],
+            ["/register", "register"], ["/register", "sign up"], ["/register", "create account"],
+            ["/", "home"], ["/", "homepage"], ["/", "explore resources"],
+            ["/my-resources", "my resources"], ["/library", "saved resources"],
+            ["/shared-with-me", "shared resources"], ["/dashboard", "workspace"],
+            ["/upload", "file upload"], ["/how-it-works", "how it works"],
+            ["/acceptable-use", "acceptable use policy"], ["/privacy", "privacy policy"],
+        ];
+        const cleanPageName = (value) => value.toLowerCase()
+            .replace(/^(the|my)\\s+/, "")
+            .replace(/\\s+(page|screen|section)$/, "")
+            .replace(/[^a-z0-9]+/g, " ").trim();
+        let destination = destinations.find((item) => item.pattern.test(command));
+        if (!destination) {
+            const requestedPage = command.replace(/^(please\\s+)?(go to|open|show|visit|take me to|navigate to)\\s+/, "");
+            const wanted = cleanPageName(requestedPage);
+            const match = pageAliases.find(([path, label]) => cleanPageName(label) === wanted);
+            if (match) destination = {path: match[0]};
+        }
+        if (/^(go back|back|previous page)$/.test(command)) {
+            window.history.back();
+            setNotice("Going back to the previous page.");
+            return;
+        }
+        if (/^(go forward|forward|next page)$/.test(command)) {
+            window.history.forward();
+            setNotice("Going forward to the next page.");
+            return;
+        }
         if (destination) {
             window.history.pushState({}, "", destination.path);
             window.dispatchEvent(new PopStateEvent("popstate"));
             setNotice(destination.path === "/upload"
                 ? "Opening the upload page. When it appears, select Choose a file to pick a document from your computer."
-                : "Opening that page.");
+                : "Opening " + (pageAliases.find(([path]) => path === destination.path)?.[1] || "that page") + ".");
             if (destination.path === "/upload") {
                 window.setTimeout(() => {
                     const picker = document.querySelector('input[type="file"]');
