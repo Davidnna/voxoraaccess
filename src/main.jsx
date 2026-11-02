@@ -61,8 +61,8 @@ function VoiceAssistant() {
                         const transcript = event.results[i][0].transcript.trim();
                         if (!transcript || mutedRef.current) continue;
                         if (speakingRef.current) {
-                            const heard = transcript.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\\s+/).filter(Boolean);
-                            const spoken = speakingTextRef.current.toLowerCase().replace(/[^a-z0-9\\s]/g, " ").split(/\\s+/).filter(Boolean);
+                            const heard = transcript.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter(Boolean);
+                            const spoken = speakingTextRef.current.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter(Boolean);
                             const spokenSet = new Set(spoken);
                             const overlap = heard.length ? heard.filter(word => spokenSet.has(word)).length / heard.length : 1;
                             const likelyEcho = overlap >= 0.55 || (heard.length >= 3 && spoken.join(" ").includes(heard.join(" ")));
