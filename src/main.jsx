@@ -277,33 +277,30 @@ function VoiceAssistant() {
     }, []);
 
     return <>
-    <button className="voxora-global-stop" type="button" aria-label="Stop Voxora speaking now" onClick={() => {
-        window.speechSynthesis?.cancel();
-        speakingRef.current = false;
-        speakingTextRef.current = "";
-        setSpeaking(false);
-        setNotice("Speech stopped. You can speak whenever you're ready.");
-        resumeListening();
-    }}>■ Stop Voxora speaking</button>
+    <div className="voxora-control-dock" role="region" aria-label="Voxora controls">
+        <div className="voxora-control-status" role="status" aria-live="polite">
+            <span className={"voxora-control-indicator" + (active && !muted ? " is-active" : "")} aria-hidden="true"/>
+            <span>{busy ? "Processing" : speaking ? "Speaking" : active && !muted ? "Listening" : muted ? "Microphone muted" : "Voice access paused"}</span>
+        </div>
+        <button type="button" className="voxora-dock-primary" onClick={startListening}>🎙 {active && !muted ? "Listening on" : "Enable / Resume"}</button>
+        <button type="button" onClick={() => muted ? startListening() : mute()}>{muted ? "Unmute mic" : "Mute mic"}</button>
+        <button type="button" onClick={() => {
+            window.speechSynthesis?.cancel();
+            speakingRef.current = false;
+            speakingTextRef.current = "";
+            setSpeaking(false);
+            setNotice("Speech stopped. You can speak whenever you're ready.");
+            resumeListening();
+        }}>■ Stop speaking</button>
+        <button type="button" onClick={() => active ? endSession() : startListening()}>{active ? "Ⅱ Pause access" : "▶ Resume access"}</button>
+    </div>
     <section className="voxora-voice-access" aria-label="Voxora voice access">
         <div className="voxora-voice-orb" data-state={speaking ? "speaking" : busy ? "thinking" : active && !muted ? "listening" : "idle"} aria-hidden="true">
             <span/>
         </div>
         <h2>Talk to Voxora</h2>
         <p className="voxora-voice-status" role="status" aria-live="polite">{notice}</p>
-        <div className="voxora-voice-controls">
-            {!active || muted
-                ? <button type="button" className="voxora-voice-primary" onClick={startListening}>Enable voice / Resume listening</button>
-                : <button type="button" onClick={mute}>Mute microphone</button>}
-            <button type="button" onClick={() => {
-                window.speechSynthesis?.cancel();
-                speakingRef.current = false;
-                setSpeaking(false);
-                setNotice("Speech stopped. Listening will resume.");
-                resumeListening();
-            }}>Stop speaking</button>
-            {active && <button type="button" onClick={endSession}>Pause voice access</button>}
-        </div>
+        <p className="voxora-voice-help">Use the always-visible controls at the bottom of the screen to enable or pause voice access, mute the microphone, or stop speech. Speak naturally to interrupt Voxora while it is replying.</p>
         <p className="voxora-voice-help">Speak naturally. You can speak while Voxora is replying to interrupt it. Likely copies of Voxora's own words are filtered; results depend on your microphone, speakers and browser. You can mute or pause voice access at any time.</p>
         <span className="sr-only">{busy ? "Processing your request" : speaking ? "Voxora is speaking" : active && !muted ? "Microphone is listening" : "Microphone is not listening"}</span>
     </section>
