@@ -1160,3 +1160,8 @@ body { overflow-x: hidden; }
 .voxora-voice-access button:focus-visible{outline:3px solid #d99c28;outline-offset:3px}
 @keyframes voxora-listen-pulse{0%,100%{box-shadow:0 0 0 12px #0b716810,0 12px 34px #0b716833}50%{box-shadow:0 0 0 24px #0b716818,0 0 0 42px #0b716808,0 12px 34px #0b716833}}
 @media(prefers-reduced-motion:reduce){.voxora-voice-orb[data-state="listening"]{animation:none}}
+
+.voxora-global-stop{position:fixed;right:1rem;bottom:1rem;z-index:2000;min-height:48px;padding:.75rem 1rem;border:2px solid #8e3028;border-radius:999px;background:#fff;color:#842a24;font:inherit;font-weight:800;box-shadow:0 8px 28px #17251e35;cursor:pointer}
+.voxora-global-stop:hover{background:#fff1ef}
+.voxora-global-stop:focus-visible{outline:4px solid #e3a62d;outline-offset:3px}
+@media(max-width:640px){.voxora-global-stop{right:.65rem;bottom:.65rem;min-height:50px;padding:.7rem .9rem}}
