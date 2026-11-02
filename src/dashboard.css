@@ -1165,3 +1165,17 @@ body { overflow-x: hidden; }
 .voxora-global-stop:hover{background:#fff1ef}
 .voxora-global-stop:focus-visible{outline:4px solid #e3a62d;outline-offset:3px}
 @media(max-width:640px){.voxora-global-stop{right:.65rem;bottom:.65rem;min-height:50px;padding:.7rem .9rem}}
+
+
+/* Persistent, always-visible Voxora controls */
+.voxora-control-dock{position:fixed;left:50%;bottom:1rem;transform:translateX(-50%);z-index:3000;display:flex;align-items:center;justify-content:center;gap:.55rem;flex-wrap:wrap;width:min(900px,calc(100vw - 2rem));padding:.7rem .85rem;border:1px solid #c9d9d0;border-radius:18px;background:#ffffffF2;box-shadow:0 12px 38px #142d2540;backdrop-filter:blur(14px);color:#183d34}
+.voxora-control-dock button{min-height:44px;padding:.65rem .85rem;border:1px solid #0b6c63;border-radius:999px;background:#fff;color:#075e58;font:inherit;font-size:.88rem;font-weight:750;cursor:pointer}
+.voxora-control-dock button:hover{background:#edf7f2}
+.voxora-control-dock .voxora-dock-primary{background:#075e58;color:#fff}
+.voxora-control-dock .voxora-dock-primary:hover{background:#064b47}
+.voxora-control-dock button:focus-visible{outline:3px solid #d99c28;outline-offset:3px}
+.voxora-control-status{display:flex;align-items:center;gap:.45rem;padding:0 .45rem;font-size:.82rem;font-weight:750;white-space:nowrap}
+.voxora-control-indicator{width:9px;height:9px;border-radius:50%;background:#9a6b24}
+.voxora-control-indicator.is-active{background:#16834b;box-shadow:0 0 0 4px #16834b20}
+body{padding-bottom:5.8rem}
+@media(max-width:640px){.voxora-control-dock{bottom:.45rem;width:calc(100vw - .9rem);gap:.35rem;padding:.55rem}.voxora-control-dock button{min-height:42px;padding:.55rem .65rem;font-size:.76rem}.voxora-control-status{width:100%;justify-content:center;padding-bottom:.1rem}body{padding-bottom:8rem}}
