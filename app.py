@@ -799,6 +799,67 @@ def voxora_assistant_tool(name, arguments, current_user):
             "url": f"/resource/{row['id']}/read",
             "excerpt_truncated": len(row["extracted_text"] or "") > 9000,
         }
+    if name == "save_to_library":
+        if not current_user:
+            return {"error": "Sign in to save resources."}
+        rid = int(arguments.get("resource_id", 0))
+        row = resource(rid)
+        if not accessible(row, current_user):
+            return {"error": "That resource is not available to this account."}
+        db().execute("INSERT INTO library(user_id,resource_id,created_at) VALUES(%s,%s,%s) ON CONFLICT DO NOTHING", (current_user["id"], rid, now()))
+        db().commit()
+        return {"success": True, "message": "Resource saved to My Library.", "resource_id": rid}
+    if name == "remove_from_library":
+        if not current_user:
+            return {"error": "Sign in to manage My Library."}
+        rid = int(arguments.get("resource_id", 0))
+        db().execute("DELETE FROM library WHERE user_id=%s AND resource_id=%s", (current_user["id"], rid))
+        db().commit()
+        return {"success": True, "message": "Resource removed from My Library.", "resource_id": rid}
+    if name == "share_resource":
+        if not current_user:
+            return {"error": "Sign in to share resources."}
+        rid = int(arguments.get("resource_id", 0))
+        row = resource(rid)
+        if row["owner_id"] != current_user["id"]:
+            return {"error": "Only the resource owner can share this resource."}
+        email = str(arguments.get("email", "")).strip().lower()[:254]
+        if not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", email):
+            return {"error": "Provide a valid account email address."}
+        target = db().execute("SELECT id FROM users WHERE email=%s", (email,)).fetchone()
+        if not target:
+            return {"error": "No Voxora Access account was found for that email."}
+        if target["id"] == current_user["id"]:
+            return {"error": "This resource already belongs to your account."}
+        db().execute("INSERT INTO shares(resource_id,user_id,created_at) VALUES(%s,%s,%s) ON CONFLICT DO NOTHING", (rid, target["id"], now()))
+        db().commit()
+        return {"success": True, "message": "Resource access shared.", "resource_id": rid, "shared_with": email}
+    if name == "change_resource_visibility":
+        if not current_user:
+            return {"error": "Sign in to change resource visibility."}
+        rid = int(arguments.get("resource_id", 0))
+        visibility = str(arguments.get("visibility", "")).lower()
+        if visibility not in {"public", "private"}:
+            return {"error": "Visibility must be public or private."}
+        row = resource(rid)
+        if row["owner_id"] != current_user["id"]:
+            return {"error": "Only the resource owner can change its visibility."}
+        db().execute("UPDATE resources SET visibility=%s WHERE id=%s", (visibility, rid))
+        db().commit()
+        return {"success": True, "message": f"Resource is now {visibility}.", "resource_id": rid}
+    if name == "delete_resource":
+        if not current_user:
+            return {"error": "Sign in to delete resources."}
+        rid = int(arguments.get("resource_id", 0))
+        confirmed = str(arguments.get("_confirmed_by_user", "")).strip().lower()
+        if confirmed != f"confirm delete resource {rid}":
+            return {"error": f"Deletion is protected. Ask the user to say exactly: confirm delete resource {rid}. Do not retry until they do."}
+        row = resource(rid)
+        if row["owner_id"] != current_user["id"]:
+            return {"error": "Only the resource owner can delete this resource."}
+        db().execute("DELETE FROM resources WHERE id=%s", (rid,))
+        db().commit()
+        return {"success": True, "message": "Resource permanently deleted.", "resource_id": rid}
     return {"error": "Unsupported action."}
 
 
@@ -831,9 +892,14 @@ def assistant_chat():
         "Speak naturally and concisely. Understand follow-up questions and corrections "
         "using the supplied conversation. Help students discover and understand study "
         "materials. You can search resources, list the signed-in student's own uploads, "
-        "and retrieve accessible extracted text from a resource using the available tools. "
-        "Never claim to have uploaded, saved, shared, deleted, or changed anything: those "
-        "actions are not enabled. Never reveal private resources; rely only on tool results. "
+        "and perform account-scoped actions using tools: save/remove resources in My Library, "
+        "share an owned resource with an existing Voxora account by email, change visibility "
+        "of an owned resource, and delete an owned resource. Only report an action as complete "
+        "when its tool result contains success=true. Before permanent deletion, explain the "
+        "consequence and ask for explicit confirmation. Call delete_resource only when the "
+        "latest user message is exactly 'confirm delete resource ID', passing that exact text "
+        "as _confirmed_by_user. Never infer consent from vague wording. Never reveal private "
+        "resources; rely only on tool results. "
         "If a visitor is signed out, explain when sign-in is required. When you find a "
         "resource, include its title and relative link. When explaining document content, "
         "make clear if only an extracted-text excerpt is available. Do not invent facts. "
@@ -858,6 +924,46 @@ def assistant_chat():
                 "name": "list_my_resources",
                 "description": "List the signed-in user's own uploaded resources.",
                 "parameters": {"type": "object", "properties": {}},
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "save_to_library",
+                "description": "Save an accessible resource to the signed-in user's My Library.",
+                "parameters": {"type": "object", "properties": {"resource_id": {"type": "integer"}}, "required": ["resource_id"]},
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "remove_from_library",
+                "description": "Remove a resource from the signed-in user's My Library.",
+                "parameters": {"type": "object", "properties": {"resource_id": {"type": "integer"}}, "required": ["resource_id"]},
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "share_resource",
+                "description": "Share a resource owned by the signed-in user with an existing Voxora account by email.",
+                "parameters": {"type": "object", "properties": {"resource_id": {"type": "integer"}, "email": {"type": "string"}}, "required": ["resource_id", "email"]},
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "change_resource_visibility",
+                "description": "Set an owned resource to public or private.",
+                "parameters": {"type": "object", "properties": {"resource_id": {"type": "integer"}, "visibility": {"type": "string", "enum": ["public", "private"]}}, "required": ["resource_id", "visibility"]},
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "delete_resource",
+                "description": "Permanently delete an owned resource. Only after latest user message exactly says 'confirm delete resource ID'; pass it in _confirmed_by_user.",
+                "parameters": {"type": "object", "properties": {"resource_id": {"type": "integer"}, "_confirmed_by_user": {"type": "string"}}, "required": ["resource_id", "_confirmed_by_user"]},
             },
         },
         {
@@ -904,6 +1010,11 @@ def assistant_chat():
                 function = call.get("function", {})
                 try:
                     arguments = json.loads(function.get("arguments") or "{}")
+                    if function.get("name") == "delete_resource":
+                        arguments["_confirmed_by_user"] = next(
+                            (item["content"] for item in reversed(safe_messages) if item["role"] == "user"),
+                            "",
+                        ).strip().lower()
                     tool_result = voxora_assistant_tool(
                         function.get("name"), arguments, current_user
                     )
