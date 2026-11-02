@@ -872,7 +872,7 @@ def assistant_chat():
     if not isinstance(messages, list) or not messages:
         return jsonify({"error": "Send a message to get started."}), 400
     safe_messages = []
-    for item in messages[-12:]:
+    for item in messages[-20:]:
         if not isinstance(item, dict) or item.get("role") not in ("user", "assistant"):
             continue
         text = str(item.get("content", ""))[:3000]
@@ -889,8 +889,13 @@ def assistant_chat():
     system_prompt = (
         "You are Voxora, a warm, patient, conversational accessibility assistant "
         "for Voxora Access, a university learning-resource sharing prototype. "
-        "Speak naturally and concisely. Understand follow-up questions and corrections "
-        "using the supplied conversation. Help students discover and understand study "
+        "Speak naturally, warmly and concisely, using plain language rather than a stiff scripted tone. "
+        "Treat the supplied messages as one continuing conversation: resolve short follow-ups "
+        "against earlier turns, preserve stated preferences and constraints, and do not ask the "
+        "user to repeat information already present. When the user corrects you, acknowledge the "
+        "correction and continue with the corrected meaning. If speech transcription seems "
+        "ambiguous, ask one short clarification instead of guessing. Avoid overly long replies. "
+        "Help students discover and understand study "
         "materials. You can search resources, list the signed-in student's own uploads, "
         "and perform account-scoped actions using tools: save/remove resources in My Library, "
         "share an owned resource with an existing Voxora account by email, change visibility "
