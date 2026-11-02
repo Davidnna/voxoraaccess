@@ -1142,3 +1142,21 @@ body { overflow-x: hidden; }
 .voxora-assistant-footnote{margin:0;padding:0 1rem 1rem;line-height:1.4}
 .voxora-assistant-root button:focus-visible,.voxora-assistant-compose input:focus-visible{outline:3px solid #e3a62d;outline-offset:2px}
 @media(max-width:480px){.voxora-assistant-root{right:.7rem;bottom:.7rem}.voxora-assistant-panel{right:-.1rem;width:calc(100vw - 1.4rem)}}
+
+
+/* Voice-first access surface */
+.voxora-voice-access{position:relative;display:flex;min-height:clamp(300px,52vh,560px);margin:1.5rem auto;padding:clamp(1.5rem,5vw,3.5rem);max-width:900px;flex-direction:column;align-items:center;justify-content:center;text-align:center;border:1px solid #dce8e0;border-radius:28px;background:radial-gradient(circle at 50% 35%,#e6f5ee 0,#f8fbf8 42%,#fff 78%);box-shadow:0 18px 60px #183d2c12;color:#19352e}
+.voxora-voice-access h2{margin:1.3rem 0 .35rem;font-size:clamp(1.6rem,4vw,2.3rem);color:#16483f}
+.voxora-voice-status{min-height:2.8em;max-width:36rem;margin:.35rem auto 1.2rem;color:#466258;font-size:1rem}
+.voxora-voice-orb{display:grid;width:112px;height:112px;place-items:center;border-radius:50%;background:linear-gradient(145deg,#0b7168,#164c45);box-shadow:0 0 0 14px #0b716810,0 12px 34px #0b716833}
+.voxora-voice-orb span{width:34px;height:34px;border:4px solid #fff;border-radius:50%;box-shadow:0 0 0 8px #ffffff24}
+.voxora-voice-orb[data-state="listening"]{animation:voxora-listen-pulse 2s ease-in-out infinite}
+.voxora-voice-orb[data-state="speaking"]{box-shadow:0 0 0 14px #0b716822,0 0 0 28px #0b716810,0 12px 34px #0b716833}
+.voxora-voice-orb[data-state="thinking"]{opacity:.7}
+.voxora-voice-controls{display:flex;justify-content:center;flex-wrap:wrap;gap:.65rem}
+.voxora-voice-controls button{min-height:46px;padding:.7rem 1rem;border:1px solid #0b6c63;border-radius:999px;background:#fff;color:#075e58;font:inherit;font-weight:700;cursor:pointer}
+.voxora-voice-controls .voxora-voice-primary{background:#075e58;color:#fff}
+.voxora-voice-help{max-width:34rem;margin:1.2rem auto 0;color:#63766d;font-size:.85rem}
+.voxora-voice-access button:focus-visible{outline:3px solid #d99c28;outline-offset:3px}
+@keyframes voxora-listen-pulse{0%,100%{box-shadow:0 0 0 12px #0b716810,0 12px 34px #0b716833}50%{box-shadow:0 0 0 24px #0b716818,0 0 0 42px #0b716808,0 12px 34px #0b716833}}
+@media(prefers-reduced-motion:reduce){.voxora-voice-orb[data-state="listening"]{animation:none}}
