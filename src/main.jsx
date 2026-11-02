@@ -61,7 +61,7 @@ function VoiceAssistant() {
                         const transcript = event.results[i][0].transcript.trim();
                         if (!transcript || mutedRef.current) continue;
                         if (speakingRef.current) {
-                            const heard = transcript.toLowerCase().replace(/[^a-z0-9\\s]/g, " ").split(/\\s+/).filter(Boolean);
+                            const heard = transcript.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\\s+/).filter(Boolean);
                             const spoken = speakingTextRef.current.toLowerCase().replace(/[^a-z0-9\\s]/g, " ").split(/\\s+/).filter(Boolean);
                             const spokenSet = new Set(spoken);
                             const overlap = heard.length ? heard.filter(word => spokenSet.has(word)).length / heard.length : 1;
@@ -158,6 +158,62 @@ function VoiceAssistant() {
             endSession();
             return;
         }
+
+        // Voice-operated navigation stays local to the app unless the user
+        // explicitly asks to open an external website.
+        const command = text.toLowerCase().replace(/[.!?]+$/, "").trim();
+        const destinations = [
+            { pattern: /^(go to|open|show|take me to) (the )?(home|home page|homepage)$/, path: "/" },
+            { pattern: /^(go to|open|show|take me to) (the )?(dashboard|workspace|my workspace)$/, path: "/dashboard" },
+            { pattern: /^(go to|open|show|take me to) (the )?(upload page|upload|upload a resource|file upload)$/, path: "/upload" },
+            { pattern: /^(go to|open|show|take me to) (my )?(uploads|my uploads|my resources)$/, path: "/my-resources" },
+            { pattern: /^(go to|open|show|take me to) (my )?(library|my library|saved resources)$/, path: "/library" },
+            { pattern: /^(go to|open|show|take me to) (the )?(shared with me|shared resources)$/, path: "/shared-with-me" },
+            { pattern: /^(go to|open|show|take me to) (the )?(account|account settings|profile)$/, path: "/account" },
+            { pattern: /^(go to|open|show|take me to) (the )?(sign in|login) page$/, path: "/signin" },
+            { pattern: /^(go to|open|show|take me to) (the )?(register|sign up|create account) page$/, path: "/register" },
+        ];
+        const destination = destinations.find((item) => item.pattern.test(command));
+        if (destination) {
+            window.history.pushState({}, "", destination.path);
+            window.dispatchEvent(new PopStateEvent("popstate"));
+            setNotice(destination.path === "/upload"
+                ? "Opening the upload page. When it appears, select Choose a file to pick a document from your computer."
+                : "Opening that page.");
+            if (destination.path === "/upload") {
+                window.setTimeout(() => {
+                    const picker = document.querySelector('input[type="file"]');
+                    picker?.focus();
+                    picker?.scrollIntoView({ behavior: "smooth", block: "center" });
+                }, 700);
+            }
+            return;
+        }
+        const externalMatch = command.match(/^(?:open|visit|go to) (?:the website )?(https?:\/\/[^\s]+|www\.[^\s]+)$/i);
+        if (externalMatch) {
+            const rawUrl = externalMatch[1].startsWith("www.") ? "https://" + externalMatch[1] : externalMatch[1];
+            try {
+                const target = new URL(rawUrl);
+                if (target.protocol !== "https:" && target.protocol !== "http:") throw new Error("Unsupported address");
+                setNotice("Opening " + target.hostname + ".");
+                window.location.assign(target.href);
+            } catch (_) {
+                setNotice("I couldn't recognise that website address. Please say the full web address.");
+            }
+            return;
+        }
+        if (/^(upload|choose|select) (a )?(file|document|something) from (my )?computer$/.test(command)) {
+            window.history.pushState({}, "", "/upload");
+            window.dispatchEvent(new PopStateEvent("popstate"));
+            setNotice("Opening the upload page. For your privacy, your browser requires you to select the file yourself.");
+            window.setTimeout(() => {
+                const picker = document.querySelector('input[type="file"]');
+                picker?.focus();
+                picker?.scrollIntoView({ behavior: "smooth", block: "center" });
+            }, 700);
+            return;
+        }
+
         const next = [...messagesRef.current, { role: "user", content: text }];
         messagesRef.current = next;
         setBusy(true);
