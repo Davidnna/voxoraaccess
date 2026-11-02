@@ -890,6 +890,7 @@ def assistant_chat():
                 headers={
                     "Authorization": "Bearer " + os.environ["GROQ_API_KEY"],
                     "Content-Type": "application/json",
+                    "User-Agent": "VoxoraAccess/1.0 (+https://voxoraaccess.onrender.com)",
                 },
                 method="POST",
             )
@@ -920,8 +921,10 @@ def assistant_chat():
         app.logger.warning("Groq API returned HTTP %s: %s", exc.code, error_body)
         if exc.code == 401:
             return jsonify({"error": "Voxora's AI key was rejected. Please check the GROQ_API_KEY in Render Environment."}), 502
+        if exc.code == 403 and "error code: 1010" in error_body.lower():
+            return jsonify({"error": "Groq's security gateway blocked the request client signature. Voxora is updating its API request headers; this is not a model-access or API-key error."}), 502
         if exc.code == 403:
-            return jsonify({"error": "Groq has denied access to this model or project. Check model access in your Groq Console."}), 502
+            return jsonify({"error": "Groq denied this request. Check the model permissions for your Groq project."}), 502
         if exc.code == 429:
             return jsonify({"error": "Voxora's free AI usage limit has been reached for now. Please try again later."}), 503
         if exc.code == 400:
