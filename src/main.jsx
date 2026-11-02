@@ -39,7 +39,21 @@ function VoiceAssistant() {
     const mutedRef = useRef(false);
     const speakingRef = useRef(false);
     const busyRef = useRef(false);
-    const messagesRef = useRef([]);
+    const messagesRef = useRef((() => {
+        try {
+            const saved = JSON.parse(window.sessionStorage.getItem("voxora-conversation-v1") || "[]");
+            return Array.isArray(saved) ? saved.filter(item =>
+                item && ["user", "assistant"].includes(item.role) &&
+                typeof item.content === "string"
+            ).slice(-20) : [];
+        } catch (_) { return []; }
+    })());
+    const persistConversation = (messages) => {
+        messagesRef.current = messages.slice(-20);
+        try {
+            window.sessionStorage.setItem("voxora-conversation-v1", JSON.stringify(messagesRef.current));
+        } catch (_) {}
+    };
     const speakingTextRef = useRef("");
 
     useEffect(() => { activeRef.current = active; }, [active]);
@@ -246,8 +260,14 @@ function VoiceAssistant() {
             return;
         }
 
-        const next = [...messagesRef.current, { role: "user", content: text }];
-        messagesRef.current = next;
+        if (/^(start a new conversation|start fresh|forget this conversation|clear our conversation)$/i.test(command)) {
+            persistConversation([]);
+            setNotice("Conversation context cleared. We can start fresh.");
+            speak("Of course. I've cleared the conversation context for this session. What would you like to do?");
+            return;
+        }
+        const next = [...messagesRef.current, { role: "user", content: text }].slice(-20);
+        persistConversation(next);
         setBusy(true);
         busyRef.current = true;
         setNotice("Voxora is thinking…");
@@ -261,7 +281,7 @@ function VoiceAssistant() {
             const result = await response.json();
             if (!response.ok) throw new Error(result.error || "Voxora couldn't respond.");
             const answer = result.reply || "I'm here. What would you like to explore?";
-            messagesRef.current = [...next, { role: "assistant", content: answer }];
+            persistConversation([...next, { role: "assistant", content: answer }]);
             setNotice("Voxora is speaking…");
             busyRef.current = false;
             setBusy(false);
