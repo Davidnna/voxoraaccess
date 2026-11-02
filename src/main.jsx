@@ -39,6 +39,7 @@ function VoiceAssistant() {
     const speakingRef = useRef(false);
     const busyRef = useRef(false);
     const messagesRef = useRef([]);
+    const speakingTextRef = useRef("");
 
     useEffect(() => { activeRef.current = active; }, [active]);
     useEffect(() => { mutedRef.current = muted; }, [muted]);
@@ -58,8 +59,20 @@ function VoiceAssistant() {
                 for (let i = event.resultIndex; i < event.results.length; i += 1) {
                     if (event.results[i].isFinal) {
                         const transcript = event.results[i][0].transcript.trim();
-                        if (transcript && !busyRef.current && !speakingRef.current && !mutedRef.current) {
-                            recognition.stop();
+                        if (!transcript || mutedRef.current) continue;
+                        if (speakingRef.current) {
+                            const heard = transcript.toLowerCase().replace(/[^a-z0-9\\s]/g, " ").split(/\\s+/).filter(Boolean);
+                            const spoken = speakingTextRef.current.toLowerCase().replace(/[^a-z0-9\\s]/g, " ").split(/\\s+/).filter(Boolean);
+                            const spokenSet = new Set(spoken);
+                            const overlap = heard.length ? heard.filter(word => spokenSet.has(word)).length / heard.length : 1;
+                            const likelyEcho = overlap >= 0.55 || (heard.length >= 3 && spoken.join(" ").includes(heard.join(" ")));
+                            if (likelyEcho) continue;
+                            window.speechSynthesis?.cancel();
+                            speakingRef.current = false;
+                            speakingTextRef.current = "";
+                            setSpeaking(false);
+                            handleVoiceInput(transcript);
+                        } else if (!busyRef.current) {
                             handleVoiceInput(transcript);
                         }
                     }
@@ -105,19 +118,21 @@ function VoiceAssistant() {
             resumeListening();
             return;
         }
-        recognitionRef.current?.stop();
         speakingRef.current = true;
+        speakingTextRef.current = text;
         setSpeaking(true);
         window.speechSynthesis.cancel();
         const utterance = new SpeechSynthesisUtterance(text);
         utterance.rate = 1;
         utterance.onend = () => {
             speakingRef.current = false;
+            speakingTextRef.current = "";
             setSpeaking(false);
             resumeListening();
         };
         utterance.onerror = () => {
             speakingRef.current = false;
+            speakingTextRef.current = "";
             setSpeaking(false);
             resumeListening();
         };
@@ -134,6 +149,7 @@ function VoiceAssistant() {
         if (/^(voxora[,. ]+)?(stop speaking|be quiet)$/i.test(text)) {
             window.speechSynthesis?.cancel();
             speakingRef.current = false;
+            speakingTextRef.current = "";
             setSpeaking(false);
             resumeListening();
             return;
@@ -204,7 +220,16 @@ function VoiceAssistant() {
         };
     }, []);
 
-    return <section className="voxora-voice-access" aria-label="Voxora voice access">
+    return <>
+    <button className="voxora-global-stop" type="button" aria-label="Stop Voxora speaking now" onClick={() => {
+        window.speechSynthesis?.cancel();
+        speakingRef.current = false;
+        speakingTextRef.current = "";
+        setSpeaking(false);
+        setNotice("Speech stopped. You can speak whenever you're ready.");
+        resumeListening();
+    }}>■ Stop Voxora speaking</button>
+    <section className="voxora-voice-access" aria-label="Voxora voice access">
         <div className="voxora-voice-orb" data-state={speaking ? "speaking" : busy ? "thinking" : active && !muted ? "listening" : "idle"} aria-hidden="true">
             <span/>
         </div>
@@ -223,9 +248,10 @@ function VoiceAssistant() {
             }}>Stop speaking</button>
             {active && <button type="button" onClick={endSession}>Pause voice access</button>}
         </div>
-        <p className="voxora-voice-help">Speak naturally. Voxora pauses its microphone while replying so it does not mistake its own voice for yours. You can mute or pause voice access at any time.</p>
+        <p className="voxora-voice-help">Speak naturally. You can speak while Voxora is replying to interrupt it. Likely copies of Voxora's own words are filtered; results depend on your microphone, speakers and browser. You can mute or pause voice access at any time.</p>
         <span className="sr-only">{busy ? "Processing your request" : speaking ? "Voxora is speaking" : active && !muted ? "Microphone is listening" : "Microphone is not listening"}</span>
-    </section>;
+    </section>
+    </>;
 }
 function App() {
     const location = useLocation();
