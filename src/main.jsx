@@ -28,6 +28,7 @@ const policyCopy = {
 };
 
 function VoiceAssistant() {
+    const navigate = useNavigate();
     const [active, setActive] = useState(false);
     const [muted, setMuted] = useState(false);
     const [speaking, setSpeaking] = useState(false);
@@ -187,29 +188,28 @@ function VoiceAssistant() {
             ["/acceptable-use", "acceptable use policy"], ["/privacy", "privacy policy"],
         ];
         const cleanPageName = (value) => value.toLowerCase()
-            .replace(/^(the|my)\\s+/, "")
-            .replace(/\\s+(page|screen|section)$/, "")
+            .replace(/^(the|my)\s+/, "")
+            .replace(/\s+(page|screen|section)$/, "")
             .replace(/[^a-z0-9]+/g, " ").trim();
         let destination = destinations.find((item) => item.pattern.test(command));
         if (!destination) {
-            const requestedPage = command.replace(/^(please\\s+)?(go to|open|show|visit|take me to|navigate to)\\s+/, "");
+            const requestedPage = command.replace(/^(please\s+)?(go to|open|show|visit|take me to|navigate to)\s+/, "");
             const wanted = cleanPageName(requestedPage);
             const match = pageAliases.find(([path, label]) => cleanPageName(label) === wanted);
             if (match) destination = {path: match[0]};
         }
         if (/^(go back|back|previous page)$/.test(command)) {
-            window.history.back();
+            navigate(-1);
             setNotice("Going back to the previous page.");
             return;
         }
         if (/^(go forward|forward|next page)$/.test(command)) {
-            window.history.forward();
+            navigate(1);
             setNotice("Going forward to the next page.");
             return;
         }
         if (destination) {
-            window.history.pushState({}, "", destination.path);
-            window.dispatchEvent(new PopStateEvent("popstate"));
+            navigate(destination.path);
             setNotice(destination.path === "/upload"
                 ? "Opening the upload page. When it appears, select Choose a file to pick a document from your computer."
                 : "Opening " + (pageAliases.find(([path]) => path === destination.path)?.[1] || "that page") + ".");
@@ -236,8 +236,7 @@ function VoiceAssistant() {
             return;
         }
         if (/^(upload|choose|select) (a )?(file|document|something) from (my )?computer$/.test(command)) {
-            window.history.pushState({}, "", "/upload");
-            window.dispatchEvent(new PopStateEvent("popstate"));
+            navigate("/upload");
             setNotice("Opening the upload page. For your privacy, your browser requires you to select the file yourself.");
             window.setTimeout(() => {
                 const picker = document.querySelector('input[type="file"]');
