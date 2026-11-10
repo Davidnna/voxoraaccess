@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { BrowserRouter, useLocation, useNavigate } from "react-router-dom";
+import { BrowserRouter, Link, useLocation, useNavigate } from "react-router-dom";
 import "./dashboard.css";
 
 const nav = [
@@ -154,8 +154,153 @@ function VoiceAssistant() {
         window.speechSynthesis.speak(utterance);
     };
 
+    const getReadablePageText = () => {
+        const main = document.querySelector(".react-page-main") || document.querySelector("main") || document.body;
+        const clone = main.cloneNode(true);
+        clone.querySelectorAll("nav, footer, form, button, input, select, textarea, iframe, script, style, .voxora-control-dock, .voxora-voice-access, .react-scroll-top, [aria-hidden='true']").forEach((node) => node.remove());
+        return (clone.innerText || clone.textContent || "").replace(/\s+/g, " ").trim().slice(0, 12000);
+    };
+
+    const findPageControl = (requestedLabel) => {
+        const normalize = (value) => String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+        const wanted = normalize(requestedLabel);
+        const controls = [...document.querySelectorAll("button, a[href], [role='button'], input[type='submit'], input[type='button']")];
+        return controls.find((element) => {
+            const rect = element.getBoundingClientRect();
+            if (!rect.width || !rect.height || getComputedStyle(element).visibility === "hidden") return false;
+            if (element.tagName === "A" && new URL(element.href, window.location.origin).origin !== window.location.origin) return false;
+            const owningForm = element.closest("form");
+            if (owningForm && new URL(owningForm.action || window.location.href, window.location.origin).origin !== window.location.origin) return false;
+            const label = normalize(element.getAttribute("aria-label") || element.getAttribute("title") || element.innerText || element.value);
+            return label === wanted || (wanted.length > 3 && (label.includes(wanted) || wanted.includes(label)));
+        });
+    };
+
+    const executeClientActions = (actions) => {
+        const outcomes = [];
+        let pageToRead = "";
+        const allowedPaths = new Set([
+            "/", "/about", "/how-it-works", "/accessibility", "/contact",
+            "/privacy", "/terms", "/cookies", "/acceptable-use", "/copyright",
+            "/signin", "/register", "/dashboard", "/upload", "/my-resources",
+            "/library", "/shared-with-me", "/preferences", "/account",
+        ]);
+        for (const action of Array.isArray(actions) ? actions : []) {
+            if (action.type === "navigate") {
+                const target = String(action.path || "");
+                if (!allowedPaths.has(target) && !/^\/resource\/\d+(?:\/read)?$/.test(target)) {
+                    outcomes.push({ success: false, message: "That page is not available." });
+                    continue;
+                }
+                navigate(target);
+                outcomes.push({ success: true, message: "Opened " + target + "." });
+            } else if (action.type === "click") {
+                const control = findPageControl(String(action.label || ""));
+                if (!control) {
+                    outcomes.push({ success: false, message: "I couldn't find the control called " + action.label + "." });
+                    continue;
+                }
+                const label = (control.innerText || control.getAttribute("aria-label") || control.value || "that control").trim();
+                if (/delete|remove|sign out|log out|share|publish|make public/i.test(label) && !window.confirm("Voxora is about to activate: " + label + ". Continue?")) {
+                    outcomes.push({ success: false, message: "The action was cancelled." });
+                    continue;
+                }
+                control.focus();
+                control.click();
+                outcomes.push({ success: true, message: "Activated " + label + "." });
+            } else if (action.type === "fill") {
+                const requested = String(action.label || "").toLowerCase();
+                const fields = [...document.querySelectorAll("input[type='text'], input[type='email'], input[type='search'], input[type='url'], input[type='tel'], input[type='number'], textarea")];
+                const field = fields.find((element) => {
+                    const label = element.labels?.[0]?.innerText || element.getAttribute("aria-label") || element.placeholder || element.name;
+                    return label && label.toLowerCase().includes(requested);
+                });
+                if (!field) {
+                    outcomes.push({ success: false, message: "I couldn't find a safe text field called " + action.label + ". Passwords and file inputs are excluded." });
+                    continue;
+                }
+                const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(field), "value")?.set;
+                if (setter) setter.call(field, String(action.value || ""));
+                else field.value = String(action.value || "");
+                field.dispatchEvent(new Event("input", { bubbles: true }));
+                field.dispatchEvent(new Event("change", { bubbles: true }));
+                field.focus();
+                outcomes.push({ success: true, message: "Entered text in " + action.label + ". Review it before submitting." });
+            } else if (action.type === "read_page") {
+                pageToRead = getReadablePageText();
+                outcomes.push({ success: Boolean(pageToRead), message: pageToRead ? "Read the current page." : "There is no readable page content." });
+            } else if (action.type === "scroll") {
+                const direction = action.direction;
+                if (direction === "top" || direction === "up") window.scrollTo({ top: 0, behavior: "smooth" });
+                else if (direction === "bottom" || direction === "down") window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "smooth" });
+                else { outcomes.push({ success: false, message: "Unknown scroll direction." }); continue; }
+                outcomes.push({ success: true, message: "Scrolled " + direction + "." });
+            } else if (action.type === "sign_out") {
+                const signoutButton = document.querySelector("form[action='/signout'] button");
+                if (!signoutButton) {
+                    outcomes.push({ success: false, message: "No active signed-in session was found." });
+                } else if (!window.confirm("Sign out of Voxora Access?")) {
+                    outcomes.push({ success: false, message: "Sign out was cancelled." });
+                } else {
+                    signoutButton.click();
+                    outcomes.push({ success: true, message: "Signing out." });
+                }
+            } else {
+                outcomes.push({ success: false, message: "That browser action is not supported." });
+            }
+        }
+        return { outcomes, pageToRead };
+    };
+
+    const executePageAction = (command) => {
+        const normalized = command.toLowerCase().replace(/^(please |can you |could you |would you )+/, "").replace(/[.!?]+$/, "").trim();
+        if (/^(read (this |the |current )?page|read (it|this) to me|read out (the )?content|start reading (this |the |current )?page|read the content on this page)$/.test(normalized)) {
+            const pageText = getReadablePageText();
+            if (!pageText) { setNotice("There is no readable page content here."); return true; }
+            setNotice("Reading the current page. You can interrupt me at any time.");
+            speak(pageText);
+            return true;
+        }
+        if (/^(what is on (this |the )?page|explain this page|describe this page|summarise this page|summarize this page)$/.test(normalized)) return false;
+        if (/^(scroll to top|go to top|scroll up)$/.test(normalized)) { window.scrollTo({top: 0, behavior: "smooth"}); setNotice("Scrolled to the top of the page."); return true; }
+        if (/^(scroll to bottom|go to bottom|scroll down)$/.test(normalized)) { window.scrollTo({top: document.documentElement.scrollHeight, behavior: "smooth"}); setNotice("Scrolled to the bottom of the page."); return true; }
+        const clickMatch = normalized.match(/^(?:click|press|activate|select) (?:on )?(?:the )?(.+)$/);
+        if (clickMatch) {
+            const requestedControl = clickMatch[1].replace(/\s+(button|link|control)$/i, "").trim();
+            const control = findPageControl(requestedControl);
+            if (!control) { setNotice("I couldn't find a visible button or link called " + requestedControl + "."); return true; }
+            const label = (control.innerText || control.getAttribute("aria-label") || control.value || "that control").trim();
+            if (/delete|remove|sign out|log out|share|publish|make public/i.test(label) && !window.confirm("Voxora is about to activate: " + label + ". Continue?")) { setNotice("Action cancelled."); return true; }
+            control.focus();
+            control.click();
+            setNotice("Activated " + label + ".");
+            return true;
+        }
+        const fillMatch = normalized.match(/^(?:type|enter|put) (.+) (?:into|in) (?:the )?(.+)$/);
+        if (fillMatch) {
+            const value = command.replace(/^(please |can you |could you |would you )+/i, "").match(/^(?:type|enter|put) (.+) (?:into|in) (?:the )?(.+)$/i);
+            if (!value) return false;
+            const fieldName = fillMatch[2];
+            const fields = [...document.querySelectorAll("input[type='text'], input[type='email'], input[type='search'], input[type='url'], input[type='tel'], input[type='number'], textarea")];
+            const field = fields.find((element) => {
+                const label = element.labels?.[0]?.innerText || element.getAttribute("aria-label") || element.placeholder || element.name;
+                return label && label.toLowerCase().includes(fieldName);
+            });
+            if (!field) { setNotice("I couldn't find an editable field called " + fieldName + ". I will not enter passwords by voice."); return true; }
+            if (field.tagName === "SELECT") { setNotice("Please tell me the exact option to choose, or select it directly."); return true; }
+            const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(field), "value")?.set;
+            if (setter) setter.call(field, value[1]); else field.value = value[1];
+            field.dispatchEvent(new Event("input", {bubbles: true}));
+            field.dispatchEvent(new Event("change", {bubbles: true}));
+            field.focus();
+            setNotice("Entered the requested text in " + fieldName + ". Review it before submitting.");
+            return true;
+        }
+        return false;
+    };
+
     const handleVoiceInput = async (rawText) => {
-        const text = rawText.trim();
+        const text = rawText.trim().replace(/^voxora[\s,]+/i, "");
         if (!text || busyRef.current) return;
         if (/^(voxora[,. ]+)?(mute yourself|mute|stop listening)$/i.test(text)) {
             mute();
@@ -174,9 +319,22 @@ function VoiceAssistant() {
             return;
         }
 
+        if (/^(voxora[, ]+)?(sign me in|log me in|open sign in|take me to sign in)$/i.test(text)) {
+            navigate("/signin");
+            setNotice("Opening sign in. Enter your password privately in the sign-in form.");
+            return;
+        }
+        if (/^(voxora[, ]+)?(sign me out|log me out|sign out|log out)$/i.test(text)) {
+            const signoutButton = document.querySelector("#voxora-signout-form button, form[action='/signout'] button");
+            if (signoutButton) signoutButton.click();
+            else { setNotice("You are not currently signed in."); }
+            return;
+        }
+        if (executePageAction(text)) return;
+
         // Voice-operated navigation stays local to the app unless the user
         // explicitly asks to open an external website.
-        const command = text.toLowerCase().replace(/[.!?]+$/, "").trim();
+        const command = text.toLowerCase().replace(/^(please |can you |could you |would you )+/, "").replace(/[.!?]+$/, "").trim();
         const destinations = [
             { pattern: /^(go to|open|show|take me to) (the )?(home|home page|homepage)$/, path: "/" },
             { pattern: /^(go to|open|show|take me to) (the )?(dashboard|workspace|my workspace)$/, path: "/dashboard" },
@@ -211,6 +369,11 @@ function VoiceAssistant() {
             const wanted = cleanPageName(requestedPage);
             const match = pageAliases.find(([path, label]) => cleanPageName(label) === wanted);
             if (match) destination = {path: match[0]};
+            if (!destination && wanted) {
+                const resourceLink = [...document.querySelectorAll(".react-content-card a[href^='/resource/']")]
+                    .find((anchor) => cleanPageName(anchor.innerText).includes(wanted) || wanted.includes(cleanPageName(anchor.innerText)));
+                if (resourceLink) destination = {path: resourceLink.getAttribute("href")};
+            }
         }
         if (/^(go back|back|previous page)$/.test(command)) {
             navigate(-1);
@@ -276,16 +439,33 @@ function VoiceAssistant() {
                 method: "POST",
                 headers: {"Content-Type": "application/json", "X-CSRF-Token": window.voxoraCsrf || "", Accept: "application/json"},
                 credentials: "same-origin",
-                body: JSON.stringify({ messages: next.slice(-12) })
+                body: JSON.stringify({
+                    messages: next.slice(-12),
+                    page_context: {
+                        path: window.location.pathname,
+                        title: document.title,
+                        content: getReadablePageText()
+                    }
+                })
             });
             const result = await response.json();
             if (!response.ok) throw new Error(result.error || "Voxora couldn't respond.");
-            const answer = result.reply || "I'm here. What would you like to explore?";
+            const actionExecution = executeClientActions(result.actions || []);
+            const failedActions = actionExecution.outcomes.filter((outcome) => !outcome.success);
+            let answer = result.reply || "I'm here. What would you like to explore?";
+            if (failedActions.length) {
+                answer = failedActions.map((outcome) => outcome.message).join(" ");
+            }
             persistConversation([...next, { role: "assistant", content: answer }]);
-            setNotice("Voxora is speaking…");
             busyRef.current = false;
             setBusy(false);
-            speak(answer);
+            if (actionExecution.pageToRead && !failedActions.length) {
+                setNotice("Reading the current page. You can interrupt me at any time.");
+                speak(actionExecution.pageToRead);
+            } else {
+                setNotice(actionExecution.outcomes.length ? "I have carried out the requested browser action." : "Voxora is speaking…");
+                speak(answer);
+            }
         } catch (error) {
             setNotice(error.message + " You can try speaking again.");
             busyRef.current = false;
@@ -374,20 +554,57 @@ function App() {
     const [data, setData] = useState(null);
     const [error, setError] = useState("");
     const [authMessage, setAuthMessage] = useState("");
+    const [localFlash, setLocalFlash] = useState(window.voxoraFlashMessages || []);
     const [currentUser, setCurrentUser] = useState(window.voxoraUser);
     const user = currentUser;
+    const protectedDataPaths = ["/upload", "/my-resources", "/library", "/shared-with-me", "/preferences", "/account"];
+    const needsSiteData = path === "/" || protectedDataPaths.includes(path) || path.startsWith("/resource/");
     const isDashboardArea = Boolean(user) && (accountNav.some(([href]) => href === path) || path.startsWith("/resource/") || path === "/account");
     useEffect(() => {
-        let active = true;
+        if (path === "/dashboard" && !user) {
+            navigate("/signin?next=%2Fdashboard", { replace: true });
+            return undefined;
+        }
+        if (!needsSiteData) {
+            setError("");
+            setData({ resources: [], resource: null });
+            return undefined;
+        }
+        const controller = new AbortController();
         setError("");
-        fetch("/api/site?path=" + encodeURIComponent(path) + (location.search || ""), { headers: { Accept: "application/json" } })
-            .then((r) => { if (!r.ok) throw new Error("This page could not be loaded."); return r.json(); })
-            .then((result) => { if (active) setData(result); })
-            .catch((e) => { if (active) setError(e.message); });
-        return () => { active = false; };
-    }, [path, location.search]);
+        setData(null);
+        fetch("/api/site?path=" + encodeURIComponent(path) + (location.search || ""), {
+            headers: { Accept: "application/json" },
+            credentials: "same-origin",
+            signal: controller.signal,
+        })
+            .then(async (response) => {
+                if (response.status === 401) {
+                    navigate("/signin?next=" + encodeURIComponent(path + location.search), { replace: true });
+                    throw new Error("Please sign in to continue.");
+                }
+                if (!response.ok) throw new Error(response.status === 404 ? "This page or resource could not be found." : "This page could not be loaded.");
+                return response.json();
+            })
+            .then((result) => setData(result))
+            .catch((loadError) => {
+                if (loadError.name !== "AbortError") setError(loadError.message);
+            });
+        return () => controller.abort();
+    }, [path, location.search, navigate, needsSiteData]);
+    useEffect(() => {
+        window.scrollTo({ top: 0, behavior: "auto" });
+        const focusTimer = window.setTimeout(() => {
+            document.getElementById("main-content")?.focus({ preventScroll: true });
+        }, 0);
+        return () => window.clearTimeout(focusTimer);
+    }, [path]);
+    useEffect(() => {
+        const heading = document.querySelector(".react-page-main h1");
+        if (heading?.textContent) document.title = heading.textContent.trim() + " · Voxora Access";
+    }, [path, data]);
     const csrf = window.voxoraCsrf || "";
-    const flash = window.voxoraFlashMessages || [];
+    const flash = localFlash;
     const handleSignout = async (event) => {
         event.preventDefault();
         try {
@@ -405,42 +622,48 @@ function App() {
         }
     };
     const signout = <form method="post" action="/signout" onSubmit={handleSignout}><input type="hidden" name="_csrf_token" value={csrf}/><button className="react-signout">Sign out</button></form>;
-    const Header = () => <header className={"react-topbar" + (isDashboardArea && user ? " react-workspace-topbar" : "")}><a className="react-brand" href={user && isDashboardArea ? "/dashboard" : "/"}><span className="react-brand-mark" aria-hidden="true">V</span><span className="react-brand-copy"><strong>Voxora Access</strong><small>{user && isDashboardArea ? "YOUR LEARNING WORKSPACE" : "Knowledge within everyone's reach."}</small></span></a>{user && isDashboardArea ? <div className="react-topbar-actions react-workspace-actions"><span className="react-user" aria-label="Signed in as">{user.name}</span><a className="react-account-link" href="/account">Account</a>{signout}</div> : <><nav className="react-topbar-actions" aria-label="Main navigation">{nav.map(([href,label])=><a key={href} href={href}>{label}</a>)}</nav><div className="react-topbar-actions">{user ? <><a href="/dashboard">My workspace</a><span className="react-user">{user.name}</span>{signout}</> : <><a href="/signin">Sign in</a><a className="react-primary-button" href="/register">Create account</a></>}</div></>}</header>;
-    const Footer = () => <footer className={"react-site-footer" + (isDashboardArea && user ? " react-workspace-footer" : "")}><div><b>Voxora Access</b><p>{isDashboardArea && user ? "Your learning space, built for access." : "Listen. Learn. Explore. Achieve."}</p></div><nav aria-label="Footer navigation">{(isDashboardArea && user ? [] : [...nav,...legal]).map(([href,label])=><a key={href} href={href}>{label}</a>)}</nav><small>© {new Date().getFullYear()} Voxora Access. All rights reserved.</small></footer>;
-    const Sidebar = () => user && isDashboardArea ? <aside className="react-sidebar" aria-label="Workspace navigation"><div className="react-sidebar-label">WORKSPACE</div><nav>{accountNav.map(([href,label])=><a key={href} className={path===href?"active":""} aria-current={path===href?"page":undefined} href={href}>{label}</a>)}</nav><div className="react-sidebar-divider"/><div className="react-sidebar-label">ACCOUNT</div><nav><a className={path==="/account"?"active":""} aria-current={path==="/account"?"page":undefined} href="/account">Account settings</a><a href="/signout" onClick={(event)=>{event.preventDefault();document.getElementById("voxora-signout-form")?.requestSubmit();}}>Sign out</a></nav></aside> : null;
-    const Frame = ({children}) => <div className="react-site-frame" onClick={(event) => {
-        if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-        const anchor = event.target.closest("a[href]");
-        if (!anchor || anchor.target || anchor.hasAttribute("download")) return;
-        const url = new URL(anchor.href, window.location.origin);
-        if (url.origin !== window.location.origin || url.pathname.startsWith("/resource/") && /\/(preview|download)$/.test(url.pathname)) return;
-        if (url.pathname === window.location.pathname && url.search === window.location.search && url.hash) return;
-        if (url.pathname.startsWith("/signout")) return;
-        event.preventDefault();
-        navigate(url.pathname + url.search + url.hash);
-    }} onSubmit={async(event)=>{const form=event.target;if(event.defaultPrevented)return;const method=(form.method||"GET").toUpperCase();if(method!=="POST")return;const action=new URL(form.action||window.location.href,window.location.origin);if(action.origin!==window.location.origin)return;const isUpload=action.pathname==="/upload";const match=action.pathname.match(/^\/resource\/(\d+)\/(library|share|delete)$/);if(!isUpload&&!match)return;event.preventDefault();try{const response=await fetch(action.pathname+action.search,{method:"POST",body:new FormData(form),credentials:"same-origin",headers:{"X-CSRF-Token":csrf,Accept:"text/html"}});if(!response.ok)throw new Error(response.status===400?"Your security token expired. Refresh the page and try again.":"The action could not be completed. Please check your details and try again.");if(!response.redirected)throw new Error("The server did not confirm the action.");const target=new URL(response.url);setLocalFlash([{category:"success",message:isUpload?"Your resource was uploaded.":match[2]==="share"?"Resource sharing completed.":match[2]==="delete"?"Resource deleted.":"Your library was updated."}]);navigate(target.pathname+target.search);}catch(err){setLocalFlash([{category:"error",message:err.message}]);}}}><a className="react-skip-link" href="#main-content">Skip to main content</a><Header/><div className={isDashboardArea && user ? "react-app-layout" : "react-public-layout"}><Sidebar/><main id="main-content" tabIndex="-1" className="react-page-main">{flash.map((m,i)=><p key={i} className={"flash "+m.category} role="status">{m.message}</p>)}{children}</main></div><Footer/><button className="react-scroll-top" type="button" aria-label="Scroll to top" title="Scroll to top" onClick={()=>window.scrollTo({top:0,behavior:window.matchMedia("(prefers-reduced-motion: reduce)").matches?"auto":"smooth"})}>↑<span>Top</span></button><form id="voxora-signout-form" method="post" action="/signout" onSubmit={handleSignout} hidden><input type="hidden" name="_csrf_token" value={csrf}/></form></div>;
+    const Header = () => <header className={"react-topbar" + (isDashboardArea && user ? " react-workspace-topbar" : "")}><Link className="react-brand" to={user && isDashboardArea ? "/dashboard" : "/"}><span className="react-brand-mark" aria-hidden="true">V</span><span className="react-brand-copy"><strong>Voxora Access</strong><small>{user && isDashboardArea ? "YOUR LEARNING WORKSPACE" : "Knowledge within everyone's reach."}</small></span></Link>{user && isDashboardArea ? <div className="react-topbar-actions react-workspace-actions"><span className="react-user" aria-label="Signed in as">{user.name}</span><Link className="react-account-link" to="/account">Account</Link>{signout}</div> : <><nav className="react-topbar-actions" aria-label="Main navigation">{nav.map(([href,label])=><Link key={href} to={href}>{label}</Link>)}</nav><div className="react-topbar-actions">{user ? <><Link to="/dashboard">My workspace</Link><span className="react-user">{user.name}</span>{signout}</> : <><Link to="/signin">Sign in</Link><Link className="react-primary-button" to="/register">Create account</Link></>}</div></>}</header>;
+    const Footer = () => <footer className={"react-site-footer" + (isDashboardArea && user ? " react-workspace-footer" : "")}><div><b>Voxora Access</b><p>{isDashboardArea && user ? "Your learning space, built for access." : "Listen. Learn. Explore. Achieve."}</p></div><nav aria-label="Footer navigation">{(isDashboardArea && user ? [] : [...nav,...legal]).map(([href,label])=><Link key={href} to={href}>{label}</Link>)}</nav><small>© {new Date().getFullYear()} Voxora Access. All rights reserved.</small></footer>;
+    const Sidebar = () => user && isDashboardArea ? <aside className="react-sidebar" aria-label="Workspace navigation"><div className="react-sidebar-label">WORKSPACE</div><nav>{accountNav.map(([href,label])=><Link key={href} className={path===href?"active":""} aria-current={path===href?"page":undefined} to={href}>{label}</Link>)}</nav><div className="react-sidebar-divider"/><div className="react-sidebar-label">ACCOUNT</div><nav><Link className={path==="/account"?"active":""} aria-current={path==="/account"?"page":undefined} to="/account">Account settings</Link><button type="button" className="react-sidebar-signout" onClick={()=>document.getElementById("voxora-signout-form")?.requestSubmit()}>Sign out</button></nav></aside> : null;
+    const Frame = ({children}) => <div className="react-site-frame" onSubmit={async(event)=>{const form=event.target;if(event.defaultPrevented)return;const method=(form.method||"GET").toUpperCase();if(method!=="POST")return;const action=new URL(form.action||window.location.href,window.location.origin);if(action.origin!==window.location.origin)return;const isUpload=action.pathname==="/upload";const match=action.pathname.match(/^\/resource\/(\d+)\/(library|share|delete)$/);if(!isUpload&&!match)return;event.preventDefault();try{const response=await fetch(action.pathname+action.search,{method:"POST",body:new FormData(form),credentials:"same-origin",headers:{"X-CSRF-Token":csrf,Accept:"text/html"}});if(!response.ok)throw new Error(response.status===400?"Your security token expired. Refresh the page and try again.":"The action could not be completed. Please check your details and try again.");if(!response.redirected)throw new Error("The server did not confirm the action.");const target=new URL(response.url);if(target.pathname==="/signin")throw new Error("Your session has expired. Please sign in and try again.");if(isUpload&&!target.pathname.startsWith("/resource/"))throw new Error("The upload was not completed. Check the file type, size and required fields.");setLocalFlash([{category:"success",message:isUpload?"Your resource was uploaded.":match[2]==="share"?"Resource sharing completed.":match[2]==="delete"?"Resource deleted.":"Your library was updated."}]);navigate(target.pathname+target.search);}catch(err){setLocalFlash([{category:"error",message:err.message}]);}}}><a className="react-skip-link" href="#main-content">Skip to main content</a><Header/><div className={isDashboardArea && user ? "react-app-layout" : "react-public-layout"}><Sidebar/><main id="main-content" tabIndex="-1" className="react-page-main">{flash.map((m,i)=><p key={i} className={"flash "+m.category} role="status">{m.message}</p>)}{children}</main></div><Footer/><button className="react-scroll-top" type="button" aria-label="Scroll to top" title="Scroll to top" onClick={()=>window.scrollTo({top:0,behavior:window.matchMedia("(prefers-reduced-motion: reduce)").matches?"auto":"smooth"})}>↑<span>Top</span></button><form id="voxora-signout-form" method="post" action="/signout" onSubmit={handleSignout} hidden><input type="hidden" name="_csrf_token" value={csrf}/></form></div>;
     const Cards = ({items}) => <div className="react-feature-grid">{items.map(([title,body])=><article className="react-feature-card" key={title}><h2>{title}</h2><p>{body}</p></article>)}</div>;
-    const Resources = ({items,empty}) => items?.length ? <div className="react-card-grid">{items.map(r=><article className="react-content-card" key={r.id}><span className="react-filetype">{(r.extension||"FILE").toUpperCase()}</span><h2><a href={"/resource/"+r.id}>{r.title}</a></h2><p>{r.description || "A shared learning resource."}</p><small>{r.owner_name ? "Shared by "+r.owner_name : (r.visibility||"")} </small><a href={"/resource/"+r.id}>Open resource →</a></article>)}</div> : <div className="react-empty">{empty}</div>;
+    const Resources = ({items,empty}) => items?.length ? <div className="react-card-grid">{items.map(r=><article className="react-content-card" key={r.id}><span className="react-filetype">{(r.extension||"FILE").toUpperCase()}</span><h2><Link to={"/resource/"+r.id}>{r.title}</Link></h2><p>{r.description || "A shared learning resource."}</p><small>{r.owner_name ? "Shared by "+r.owner_name : (r.visibility||"")} </small><Link to={"/resource/"+r.id}>Open resource →</Link></article>)}</div> : <div className="react-empty">{empty}</div>;
     const FormField = ({label,...props}) => <label className="react-field">{label}<input {...props}/></label>;
     const Dashboard = () => {
         const [dash,setDash]=useState(null);
-        useEffect(()=>{fetch("/api/dashboard").then(r=>{if(!r.ok)throw new Error("Dashboard data unavailable");return r.json()}).then(setDash).catch(e=>setError(e.message))},[]);
+        useEffect(()=>{
+            const controller = new AbortController();
+            fetch("/api/dashboard", { credentials: "same-origin", signal: controller.signal })
+                .then((response)=>{
+                    if (response.status === 401) {
+                        navigate("/signin?next=%2Fdashboard", { replace: true });
+                        throw new Error("Please sign in to continue.");
+                    }
+                    if (!response.ok) throw new Error("Dashboard data unavailable");
+                    return response.json();
+                })
+                .then(setDash)
+                .catch((dashboardError)=>{
+                    if (dashboardError.name !== "AbortError") setError(dashboardError.message);
+                });
+            return () => controller.abort();
+        },[]);
         if(!dash)return <section className="react-loading-panel" role="status" aria-live="polite"><div className="react-loader-orbit" aria-hidden="true"><span/></div><h2>Preparing your workspace</h2><p>Gathering your resources and recent activity…</p><div className="react-skeleton-grid" aria-hidden="true"><i/><i/><i/><i/></div><div className="react-skeleton-line" aria-hidden="true"/><div className="react-skeleton-line short" aria-hidden="true"/></section>;
-        return <><p className="react-eyebrow">YOUR LEARNING SPACE</p><h1>Welcome back, {dash.user.name.split(" ")[0]}.</h1><p>Pick up where you left off or add something new to your library.</p><a className="react-primary-button" href="/upload">＋ Upload a resource</a><section className="react-stats">{[["Your uploads",dash.stats.uploads],["Public resources",dash.stats.public],["Saved in library",dash.stats.saved],["Shared with you",dash.stats.shared]].map(([k,v])=><article className="react-stat" key={k}><span>{k}</span><strong>{v}</strong></article>)}</section><h2>Recent uploads</h2><Resources items={dash.recent} empty="You haven't uploaded a resource yet."/><h2>Saved for later</h2><Resources items={dash.saved} empty="Your library is waiting for its first resource."/></>;
+        return <><p className="react-eyebrow">YOUR LEARNING SPACE</p><h1>Welcome back, {dash.user.name.split(" ")[0]}.</h1><p>Pick up where you left off or add something new to your library.</p><Link className="react-primary-button" to="/upload">＋ Upload a resource</Link><section className="react-stats">{[["Your uploads",dash.stats.uploads],["Public resources",dash.stats.public],["Saved in library",dash.stats.saved],["Shared with you",dash.stats.shared]].map(([k,v])=><article className="react-stat" key={k}><span>{k}</span><strong>{v}</strong></article>)}</section><h2>Recent uploads</h2><Resources items={dash.recent} empty="You haven't uploaded a resource yet."/><h2>Saved for later</h2><Resources items={dash.saved} empty="Your library is waiting for its first resource."/></>;
     };
-    if(error)return <Frame><div className="react-error" role="alert">{error} <a href="/">Return home</a></div></Frame>;
+    if(error)return <Frame><div className="react-error" role="alert">{error} <Link to="/">Return home</Link></div></Frame>;
     if(!data || data.path !== path)return <div className="react-initial-loading" role="status" aria-live="polite"><div className="react-loader-orbit" aria-hidden="true"><span/></div><strong>Voxora Access</strong><p>Loading this page without restarting voice access…</p><div className="react-loading-track"><span/></div></div>;
     let content;
-    if(path==="/") content=<><section className="react-hero"><div><p className="react-eyebrow">KNOWLEDGE WITHIN EVERYONE'S REACH</p><h1>Learning, on your terms.</h1><p>Discover learning resources, organize your materials and listen when reading on screen isn't the easiest option.</p><div className="react-actions"><a className="react-primary-button" href="/register">Create your free account</a><a href="#resources">Explore resources ↓</a></div></div><div className="react-hero-art" aria-hidden="true">V<span>LISTEN · LEARN · EXPLORE</span></div></section><Cards items={[["Discover resources","Browse publicly shared study materials."],["Make it personal","Save useful materials in your own library."],["Choose how to read","Use the reading view and supported browser speech."]]}/><section id="resources"><div className="react-section-heading"><div><p className="react-eyebrow">OPEN KNOWLEDGE</p><h2>Explore public resources</h2></div><form className="react-search" onSubmit={(event)=>{event.preventDefault();const q=String(new FormData(event.currentTarget).get("q")||"").trim();navigate(q?"/?q="+encodeURIComponent(q):"/");}}><input name="q" defaultValue={data.query||""} placeholder="Search by title or topic" aria-label="Search resources"/><button className="react-primary-button">Search</button></form></div><Resources items={data.resources} empty="Public resources will appear here as the community shares learning materials."/></section></>;
-    else if(path==="/signin"||path==="/register") {const reg=path==="/register";content=<section className="react-auth"><div><p className="react-eyebrow">WELCOME TO VOXORA ACCESS</p><h1>Learning, on your terms.</h1><p>Keep resources close, discover shared materials, and listen when reading on screen isn't the easiest option.</p></div><form method="post" className="react-form" onSubmit={async(event)=>{event.preventDefault();setAuthMessage("");const form=event.currentTarget;try{const response=await fetch("/api/auth/"+(reg?"register":"signin")+window.location.search,{method:"POST",body:new FormData(form),headers:{"X-CSRF-Token":csrf,Accept:"application/json"},credentials:"same-origin"});const result=await response.json();if(!response.ok)throw new Error(result.error||"Authentication could not be completed.");setCurrentUser(result.user);window.voxoraUser=result.user;if(result.csrf)window.voxoraCsrf=result.csrf;setAuthMessage("");navigate(result.redirect||"/dashboard");}catch(err){setAuthMessage(err.message);}}}><h2>{reg?"Create your account":"Sign in to Voxora Access"}</h2><input type="hidden" name="_csrf_token" value={csrf}/>{reg&&<FormField label="Full name" name="name" autoComplete="name" required maxLength="80"/>}<FormField label="Email" name="email" type="email" autoComplete="email" required/><FormField label="Password" name="password" type="password" autoComplete={reg?"new-password":"current-password"} required minLength={reg?10:undefined}/>{reg&&<small>Use at least 10 characters.</small>}{authMessage&&<p className="react-auth-message" role="alert">{authMessage}</p>}<button className="react-primary-button">{reg?"Create account":"Sign in"}</button><p>{reg?"Already registered? ":"New to Voxora Access? "}<a href={reg?"/signin":"/register"}>{reg?"Sign in":"Create an account"}</a></p></form></section>}
+    if(path==="/") content=<><section className="react-hero"><div><p className="react-eyebrow">KNOWLEDGE WITHIN EVERYONE'S REACH</p><h1>Learning, on your terms.</h1><p>Discover learning resources, organize your materials and listen when reading on screen isn't the easiest option.</p><div className="react-actions"><Link className="react-primary-button" to="/register">Create your free account</Link><a href="#resources">Explore resources ↓</a></div></div><div className="react-hero-art" aria-hidden="true">V<span>LISTEN · LEARN · EXPLORE</span></div></section><Cards items={[["Discover resources","Browse publicly shared study materials."],["Make it personal","Save useful materials in your own library."],["Choose how to read","Use the reading view and supported browser speech."]]}/><section id="resources"><div className="react-section-heading"><div><p className="react-eyebrow">OPEN KNOWLEDGE</p><h2>Explore public resources</h2></div><form className="react-search" onSubmit={(event)=>{event.preventDefault();const q=String(new FormData(event.currentTarget).get("q")||"").trim();navigate(q?"/?q="+encodeURIComponent(q):"/");}}><input name="q" defaultValue={data.query||""} placeholder="Search by title or topic" aria-label="Search resources"/><button className="react-primary-button">Search</button></form></div><Resources items={data.resources} empty="Public resources will appear here as the community shares learning materials."/></section></>;
+    else if(path==="/signin"||path==="/register") {const reg=path==="/register";content=<section className="react-auth"><div><p className="react-eyebrow">WELCOME TO VOXORA ACCESS</p><h1>Learning, on your terms.</h1><p>Keep resources close, discover shared materials, and listen when reading on screen isn't the easiest option.</p></div><form method="post" className="react-form" onSubmit={async(event)=>{event.preventDefault();setAuthMessage("");const form=event.currentTarget;try{const response=await fetch("/api/auth/"+(reg?"register":"signin")+window.location.search,{method:"POST",body:new FormData(form),headers:{"X-CSRF-Token":csrf,Accept:"application/json"},credentials:"same-origin"});const result=await response.json();if(!response.ok)throw new Error(result.error||"Authentication could not be completed.");setCurrentUser(result.user);window.voxoraUser=result.user;if(result.csrf)window.voxoraCsrf=result.csrf;setAuthMessage("");navigate(result.redirect||"/dashboard");}catch(err){setAuthMessage(err.message);}}}><h2>{reg?"Create your account":"Sign in to Voxora Access"}</h2><input type="hidden" name="_csrf_token" value={csrf}/>{reg&&<FormField label="Full name" name="name" autoComplete="name" required maxLength="80"/>}<FormField label="Email" name="email" type="email" autoComplete="email" required/><FormField label="Password" name="password" type="password" autoComplete={reg?"new-password":"current-password"} required minLength={reg?10:undefined}/>{reg&&<small>Use at least 10 characters.</small>}{authMessage&&<p className="react-auth-message" role="alert">{authMessage}</p>}<button className="react-primary-button">{reg?"Create account":"Sign in"}</button><p>{reg?"Already registered? ":"New to Voxora Access? "}<Link to={reg?"/signin":"/register"}>{reg?"Sign in":"Create an account"}</Link></p></form></section>}
     else if(path==="/dashboard")content=<Dashboard/>;
-    else if(path==="/account")content=<><p className="react-eyebrow">ACCOUNT MANAGEMENT</p><h1>Your account</h1><p>Review the details associated with your Voxora Access account.</p><section className="react-account-panel"><div className="react-account-avatar" aria-hidden="true">{(user?.name||"U").trim().charAt(0).toUpperCase()}</div><div><span className="react-account-label">ACCOUNT HOLDER</span><h2>{user?.name||"User"}</h2><p>{user?.email||""}</p></div></section><div className="react-account-settings"><article><div><h2>Personal information</h2><p>Your profile name and email address are used to identify your account.</p></div><dl><div><dt>Full name</dt><dd>{user?.name||"Not available"}</dd></div><div><dt>Email address</dt><dd>{user?.email||"Not available"}</dd></div></dl></article><article><div><h2>Workspace preferences</h2><p>Manage how you access and read learning resources.</p></div><a className="react-secondary-button" href="/preferences">Open preferences</a></article><article><div><h2>Security</h2><p>Always sign out when using a shared or public device. Password management is handled through the sign-in process.</p></div><form method="post" action="/signout"><input type="hidden" name="_csrf_token" value={csrf}/><button className="react-danger-button">Sign out of this account</button></form></article></div></>;
+    else if(path==="/account")content=<><p className="react-eyebrow">ACCOUNT MANAGEMENT</p><h1>Your account</h1><p>Review the details associated with your Voxora Access account.</p><section className="react-account-panel"><div className="react-account-avatar" aria-hidden="true">{(user?.name||"U").trim().charAt(0).toUpperCase()}</div><div><span className="react-account-label">ACCOUNT HOLDER</span><h2>{user?.name||"User"}</h2><p>{user?.email||""}</p></div></section><div className="react-account-settings"><article><div><h2>Personal information</h2><p>Your profile name and email address are used to identify your account.</p></div><dl><div><dt>Full name</dt><dd>{user?.name||"Not available"}</dd></div><div><dt>Email address</dt><dd>{user?.email||"Not available"}</dd></div></dl></article><article><div><h2>Workspace preferences</h2><p>Manage how you access and read learning resources.</p></div><Link className="react-secondary-button" to="/preferences">Open preferences</Link></article><article><div><h2>Security</h2><p>Always sign out when using a shared or public device. Password management is handled through the sign-in process.</p></div><form method="post" action="/signout" onSubmit={handleSignout}><input type="hidden" name="_csrf_token" value={csrf}/><button className="react-danger-button">Sign out of this account</button></form></article></div></>;
     else if(path==="/upload")content=<><p className="react-eyebrow">SHARE KNOWLEDGE</p><h1>Upload a resource</h1><p>Add study materials for your own use or share them publicly.</p><form className="react-form" method="post" encType="multipart/form-data"><input type="hidden" name="_csrf_token" value={csrf}/><FormField as="input" label="Choose a file" name="file" type="file" required accept=".pdf,.docx,.pptx,.txt,.md,.rtf,.csv,.odt,.ods,.odp"/><small>PDF, DOCX, PPTX, TXT, MD, RTF, CSV, ODT, ODS or ODP. Maximum 20 MB by default.</small><FormField label="Resource title" name="title" maxLength="160" placeholder="e.g. Introduction to Biology"/><label className="react-field">Short description<textarea name="description" rows="4" maxLength="1000"/></label><fieldset><legend>Who can access it?</legend><label><input type="radio" name="visibility" value="public" defaultChecked/> Public</label><label><input type="radio" name="visibility" value="private"/> Private</label></fieldset><button className="react-primary-button">Upload resource</button></form></>;
     else if(path==="/my-resources"||path==="/library"||path==="/shared-with-me")content=<><p className="react-eyebrow">YOUR WORKSPACE</p><h1>{path==="/my-resources"?"My uploads":path==="/library"?"My Library":"Shared with me"}</h1><p>{path==="/my-resources"?"Manage resources you've uploaded.":path==="/library"?"Saved resources, ready when you are.":"Private resources shared with your account."}</p><Resources items={data.resources} empty="Nothing to show here yet."/></>;
-    else if(path.startsWith("/resource/")&&data.resource){const r=data.resource;const ext=(r.extension||"").toLowerCase();const previewable=["pdf","docx","pptx","txt","md","csv"].includes(ext);const isPdf=ext==="pdf"||ext==="docx"||ext==="pptx";content=<><p><a href="/">Explore</a> / {r.title}</p><p className="react-eyebrow">{r.extension.toUpperCase()} DOCUMENT</p><h1>{r.title}</h1><p>{r.description||"No description provided."}</p><p>Owner: {r.owner_name} · {Math.round(r.size_bytes/1024)} KB · {r.visibility}</p><div className="react-actions"><a className="react-primary-button" href={"/resource/"+r.id+"/read"}>Open document viewer</a><a href={"/resource/"+r.id+"/download"}>Download original</a></div><section className="react-document-panel" aria-labelledby="document-preview-title"><div className="react-document-heading"><div><h2 id="document-preview-title">Document preview</h2><p>DOCX and PPTX files are converted to PDF for in-page viewing. The original file remains available to download.</p></div><a href={"/resource/"+r.id+"/download"}>Open or download original</a></div>{previewable?<iframe className="react-document-frame" title={(isPdf?"PDF preview of "+r.extension.toUpperCase()+": ":"Text document: ")+r.title} src={"/resource/"+r.id+"/preview"} />:<div className="react-document-fallback"><h3>PDF preview is not available</h3><p>The original file is stored safely. The PDF preview may be unavailable if conversion failed or LibreOffice is not installed. You can still download the original document.</p><a className="react-primary-button" href={"/resource/"+r.id+"/download"}>Download {r.extension.toUpperCase()}</a></div>}</section><p className="react-accessibility-note">Accessibility note: an embedded viewer does not automatically make a document accessible. Screen-reader results depend on the document's structure and tags, and scanned PDFs may require OCR.</p>{user&&<form method="post" action={"/resource/"+r.id+"/library"}><input type="hidden" name="_csrf_token" value={csrf}/><button className="react-primary-button">{r.in_library?"Remove from My Library":"Add to My Library"}</button></form>}{r.is_owner&&<><h2>Share this resource</h2><form method="post" action={"/resource/"+r.id+"/share"} className="react-form"><input type="hidden" name="_csrf_token" value={csrf}/><FormField label="Account email" name="email" type="email" required placeholder="student@example.edu"/><button className="react-primary-button">Share</button></form><form method="post" action={"/resource/"+r.id+"/delete"} onSubmit={e=>{if(!confirm("Delete this resource permanently?"))e.preventDefault()}}><input type="hidden" name="_csrf_token" value={csrf}/><button className="react-danger-button">Delete resource</button></form></>}</>}
-    else if(pageCopy[path]){const [eyebrow,title,lede,items]=pageCopy[path];content=<><p className="react-eyebrow">{eyebrow.toUpperCase()}</p><h1>{title}</h1><p className="react-lede">{lede}</p><Cards items={items}/><a className="react-primary-button" href="/register">Get started</a></>}
+    else if(path.startsWith("/resource/")&&data.resource){const r=data.resource;const ext=(r.extension||"").toLowerCase();const previewable=["pdf","docx","pptx","txt","md","csv"].includes(ext);const isPdf=ext==="pdf"||ext==="docx"||ext==="pptx";content=<><p><Link to="/">Explore</Link> / {r.title}</p><p className="react-eyebrow">{r.extension.toUpperCase()} DOCUMENT</p><h1>{r.title}</h1><p>{r.description||"No description provided."}</p><p>Owner: {r.owner_name} · {Math.round(r.size_bytes/1024)} KB · {r.visibility}</p><div className="react-actions"><Link className="react-primary-button" to={"/resource/"+r.id+"/read"}>Open document viewer</Link><a href={"/resource/"+r.id+"/download"}>Download original</a></div><section className="react-document-panel" aria-labelledby="document-preview-title"><div className="react-document-heading"><div><h2 id="document-preview-title">Document preview</h2><p>DOCX and PPTX files are converted to PDF for in-page viewing. The original file remains available to download.</p></div><a href={"/resource/"+r.id+"/download"}>Open or download original</a></div>{previewable?<iframe className="react-document-frame" title={(isPdf?"PDF preview of "+r.extension.toUpperCase()+": ":"Text document: ")+r.title} src={"/resource/"+r.id+"/preview"} />:<div className="react-document-fallback"><h3>PDF preview is not available</h3><p>The original file is stored safely. The PDF preview may be unavailable if conversion failed or LibreOffice is not installed. You can still download the original document.</p><a className="react-primary-button" href={"/resource/"+r.id+"/download"}>Download {r.extension.toUpperCase()}</a></div>}</section><p className="react-accessibility-note">Accessibility note: an embedded viewer does not automatically make a document accessible. Screen-reader results depend on the document's structure and tags, and scanned PDFs may require OCR.</p>{user&&<form method="post" action={"/resource/"+r.id+"/library"}><input type="hidden" name="_csrf_token" value={csrf}/><button className="react-primary-button">{r.in_library?"Remove from My Library":"Add to My Library"}</button></form>}{r.is_owner&&<><h2>Share this resource</h2><form method="post" action={"/resource/"+r.id+"/share"} className="react-form"><input type="hidden" name="_csrf_token" value={csrf}/><FormField label="Account email" name="email" type="email" required placeholder="student@example.edu"/><button className="react-primary-button">Share</button></form><form method="post" action={"/resource/"+r.id+"/delete"} onSubmit={e=>{if(!confirm("Delete this resource permanently?"))e.preventDefault()}}><input type="hidden" name="_csrf_token" value={csrf}/><button className="react-danger-button">Delete resource</button></form></>}</>}
+    else if(pageCopy[path]){const [eyebrow,title,lede,items]=pageCopy[path];content=<><p className="react-eyebrow">{eyebrow.toUpperCase()}</p><h1>{title}</h1><p className="react-lede">{lede}</p><Cards items={items}/><Link className="react-primary-button" to="/register">Get started</Link></>}
     else if(policyCopy[path]){const [title,...paragraphs]=policyCopy[path];content=<article className="react-policy"><p className="react-eyebrow">PLATFORM POLICIES</p><h1>{title}</h1><p className="react-muted">Last updated: 31 October 2026</p>{paragraphs.map((p,i)=><p key={i}>{p}</p>)}</article>}
-    else content=<><h1>Page not found</h1><p>The page you're looking for isn't available.</p><a href="/">Return home</a></>;
+    else content=<><h1>Page not found</h1><p>The page you're looking for isn't available.</p><Link to="/">Return home</Link></>;
     return <Frame>{content}</Frame>;
 }
 createRoot(document.getElementById("voxora-app-root")).render(<BrowserRouter><><App/><VoiceAssistant/></></BrowserRouter>);
