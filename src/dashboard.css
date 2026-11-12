@@ -1179,38 +1179,3 @@ body { overflow-x: hidden; }
 .voxora-control-indicator.is-active{background:#16834b;box-shadow:0 0 0 4px #16834b20}
 body{padding-bottom:5.8rem}
 @media(max-width:640px){.voxora-control-dock{bottom:.45rem;width:calc(100vw - .9rem);gap:.35rem;padding:.55rem}.voxora-control-dock button{min-height:42px;padding:.55rem .65rem;font-size:.76rem}.voxora-control-status{width:100%;justify-content:center;padding-bottom:.1rem}body{padding-bottom:8rem}}
-
-/* React Router account action control */
-#voxora-app-root .react-sidebar-signout {
-    width: 100%;
-    padding: 10px 12px;
-    border: 0;
-    border-radius: 9px;
-    background: transparent;
-    color: inherit;
-    text-align: left;
-    font: inherit;
-    cursor: pointer;
-}
-#voxora-app-root .react-sidebar-signout:hover,
-#voxora-app-root .react-sidebar-signout:focus-visible {
-    background: #eaf3ed;
-}
-#voxora-app-root .react-sidebar-signout:focus-visible {
-    outline: 3px solid #d99c28;
-    outline-offset: 2px;
-}
-@media (max-width: 640px) {
-    .voxora-control-dock {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        align-items: stretch;
-    }
-    .voxora-control-dock .voxora-control-status {
-        grid-column: 1 / -1;
-    }
-    .voxora-control-dock button {
-        width: 100%;
-        white-space: normal;
-    }
-}
