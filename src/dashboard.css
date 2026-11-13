@@ -1144,28 +1144,57 @@ body { overflow-x: hidden; }
 @media(max-width:480px){.voxora-assistant-root{right:.7rem;bottom:.7rem}.voxora-assistant-panel{right:-.1rem;width:calc(100vw - 1.4rem)}}
 
 
-/* Voice-first access surface */
-.voxora-voice-access{position:relative;display:flex;min-height:clamp(300px,52vh,560px);margin:1.5rem auto;padding:clamp(1.5rem,5vw,3.5rem);max-width:900px;flex-direction:column;align-items:center;justify-content:center;text-align:center;border:1px solid #dce8e0;border-radius:28px;background:radial-gradient(circle at 50% 35%,#e6f5ee 0,#f8fbf8 42%,#fff 78%);box-shadow:0 18px 60px #183d2c12;color:#19352e}
-.voxora-voice-access h2{margin:1.3rem 0 .35rem;font-size:clamp(1.6rem,4vw,2.3rem);color:#16483f}
-.voxora-voice-status{min-height:2.8em;max-width:36rem;margin:.35rem auto 1.2rem;color:#466258;font-size:1rem}
-.voxora-voice-orb{display:grid;width:112px;height:112px;place-items:center;border-radius:50%;background:linear-gradient(145deg,#0b7168,#164c45);box-shadow:0 0 0 14px #0b716810,0 12px 34px #0b716833}
-.voxora-voice-orb span{width:34px;height:34px;border:4px solid #fff;border-radius:50%;box-shadow:0 0 0 8px #ffffff24}
-.voxora-voice-orb[data-state="listening"]{animation:voxora-listen-pulse 2s ease-in-out infinite}
-.voxora-voice-orb[data-state="speaking"]{box-shadow:0 0 0 14px #0b716822,0 0 0 28px #0b716810,0 12px 34px #0b716833}
-.voxora-voice-orb[data-state="thinking"]{opacity:.7}
-.voxora-voice-controls{display:flex;justify-content:center;flex-wrap:wrap;gap:.65rem}
-.voxora-voice-controls button{min-height:46px;padding:.7rem 1rem;border:1px solid #0b6c63;border-radius:999px;background:#fff;color:#075e58;font:inherit;font-weight:700;cursor:pointer}
-.voxora-voice-controls .voxora-voice-primary{background:#075e58;color:#fff}
-.voxora-voice-help{max-width:34rem;margin:1.2rem auto 0;color:#63766d;font-size:.85rem}
-.voxora-voice-access button:focus-visible{outline:3px solid #d99c28;outline-offset:3px}
-@keyframes voxora-listen-pulse{0%,100%{box-shadow:0 0 0 12px #0b716810,0 12px 34px #0b716833}50%{box-shadow:0 0 0 24px #0b716818,0 0 0 42px #0b716808,0 12px 34px #0b716833}}
-@media(prefers-reduced-motion:reduce){.voxora-voice-orb[data-state="listening"]{animation:none}}
-
-.voxora-global-stop{position:fixed;right:1rem;bottom:1rem;z-index:2000;min-height:48px;padding:.75rem 1rem;border:2px solid #8e3028;border-radius:999px;background:#fff;color:#842a24;font:inherit;font-weight:800;box-shadow:0 8px 28px #17251e35;cursor:pointer}
-.voxora-global-stop:hover{background:#fff1ef}
-.voxora-global-stop:focus-visible{outline:4px solid #e3a62d;outline-offset:3px}
-@media(max-width:640px){.voxora-global-stop{right:.65rem;bottom:.65rem;min-height:50px;padding:.7rem .9rem}}
-
+/* Temporary assistant feedback: visible only while Voxora has something useful to report. */
+.voxora-assistant-notice{
+    position:fixed;
+    top:1rem;
+    left:50%;
+    z-index:3500;
+    display:flex;
+    align-items:center;
+    gap:.75rem;
+    width:min(760px,calc(100vw - 2rem));
+    padding:.85rem 1rem;
+    transform:translateX(-50%);
+    border:1px solid #c9d9d0;
+    border-radius:14px;
+    background:#fffffff5;
+    box-shadow:0 12px 38px #142d2530;
+    color:#183d34;
+    font-size:.9rem;
+    font-weight:650;
+    line-height:1.45;
+    backdrop-filter:blur(14px);
+}
+.voxora-assistant-notice.is-busy,
+.voxora-assistant-notice.is-speaking{border-color:#0b7168}
+.voxora-assistant-notice-dot{
+    flex:0 0 auto;
+    width:9px;
+    height:9px;
+    border-radius:50%;
+    background:#16834b;
+    box-shadow:0 0 0 4px #16834b20;
+}
+.voxora-assistant-notice.is-busy .voxora-assistant-notice-dot{background:#b07817;box-shadow:0 0 0 4px #b0781720}
+.voxora-assistant-notice button{
+    flex:0 0 auto;
+    margin-left:auto;
+    min-width:32px;
+    min-height:32px;
+    border:0;
+    border-radius:8px;
+    background:transparent;
+    color:inherit;
+    font-size:1.35rem;
+    line-height:1;
+    cursor:pointer;
+}
+.voxora-assistant-notice button:hover{background:#edf7f2}
+.voxora-assistant-notice button:focus-visible{outline:3px solid #d99c28;outline-offset:2px}
+@media(max-width:640px){
+    .voxora-assistant-notice{top:.5rem;width:calc(100vw - 1rem);padding:.7rem .8rem;font-size:.82rem}
+}
 
 /* Persistent, always-visible Voxora controls */
 .voxora-control-dock{position:fixed;left:50%;bottom:1rem;transform:translateX(-50%);z-index:3000;display:flex;align-items:center;justify-content:center;gap:.55rem;flex-wrap:wrap;width:min(900px,calc(100vw - 2rem));padding:.7rem .85rem;border:1px solid #c9d9d0;border-radius:18px;background:#ffffffF2;box-shadow:0 12px 38px #142d2540;backdrop-filter:blur(14px);color:#183d34}

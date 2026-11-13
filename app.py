@@ -200,11 +200,13 @@ def check_csrf():
 
 
 def accessible(r, u):
-    if r["visibility"] == "public":
-        return True
+    # Every uploaded resource requires an authenticated Voxora account.
+    # "Public" visibility means available to signed-in members, not anonymous visitors.
     if not u:
         return False
     if r["owner_id"] == u["id"]:
+        return True
+    if r["visibility"] == "public":
         return True
     return bool(
         db()
@@ -241,15 +243,9 @@ def resource(rid):
 
 @app.route("/")
 def index():
-    q = request.args.get("q", "").strip()[:100]
-    sql = "SELECT r.id,r.title,r.description,r.extension,r.size_bytes,u.name owner_name FROM resources r JOIN users u ON u.id=r.owner_id WHERE r.visibility='public'"
-    p = []
-    if q:
-        sql += " AND (r.title ILIKE %s OR r.description ILIKE %s)"
-        t = "%" + q + "%"
-        p = [t, t]
-    rows = db().execute(sql + " ORDER BY r.created_at DESC LIMIT 60", p).fetchall()
-    return render_template("index.html", resources=rows, query=q)
+    # The public landing page introduces the platform only. Uploaded resources
+    # are discoverable from the authenticated workspace, never from the home page.
+    return render_template("index.html", resources=[], query="")
 
 
 @app.route("/register", methods=["GET", "POST"])
@@ -391,14 +387,18 @@ def upload():
 
 
 @app.route("/resource/<int:rid>")
+@login_required
 def detail(rid):
     r = resource(rid)
     if not accessible(r, user()):
         abort(404)
-    return render_template("resource.html", resource=r)
+    response = app.make_response(render_template("resource.html", resource=r))
+    response.headers["Cache-Control"] = "private, no-store"
+    return response
 
 
 @app.route("/resource/<int:rid>/preview")
+@login_required
 def preview(rid):
     r = resource(rid)
     if not accessible(r, user()):
@@ -452,10 +452,12 @@ def preview(rid):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'self'"
     response.headers["Content-Disposition"] = "inline"
+    response.headers["Cache-Control"] = "private, no-store"
     return response
 
 
 @app.route("/resource/<int:rid>/download")
+@login_required
 def download(rid):
     r = resource(rid)
     if not accessible(r, user()):
@@ -470,20 +472,25 @@ def download(rid):
     )
     if not file_row or file_row["file_data"] is None:
         abort(404)
-    return send_file(
+    response = send_file(
         io.BytesIO(bytes(file_row["file_data"])),
         mimetype=r["mime_type"],
         as_attachment=True,
         download_name=r["original_name"],
     )
+    response.headers["Cache-Control"] = "private, no-store"
+    return response
 
 
 @app.route("/resource/<int:rid>/read")
+@login_required
 def read(rid):
     r = resource(rid)
     if not accessible(r, user()):
         abort(404)
-    return render_template("read.html", resource=r)
+    response = app.make_response(render_template("read.html", resource=r))
+    response.headers["Cache-Control"] = "private, no-store"
+    return response
 
 
 @app.route("/my-resources")
@@ -682,6 +689,17 @@ def api_signout():
 def site_data():
     path = request.args.get("path", "/")
     current = user()
+    protected_paths = {
+        "/dashboard", "/upload", "/my-resources", "/library",
+        "/shared-with-me", "/preferences", "/account",
+    }
+    if not current and (path in protected_paths or path.startswith("/resource/")):
+        response = jsonify({
+            "error": "Sign in to access uploaded resources and your workspace.",
+            "login_required": True,
+        })
+        response.headers["Cache-Control"] = "private, no-store"
+        return response, 401
     payload = {
         "path": path,
         "user": ({"id": current["id"], "name": current["name"], "email": current["email"]} if current else None),
@@ -691,16 +709,8 @@ def site_data():
     }
 
     if path == "/":
-        q = request.args.get("q", "").strip()[:100]
-        sql = "SELECT r.id,r.title,r.description,r.extension,r.size_bytes,u.name owner_name FROM resources r JOIN users u ON u.id=r.owner_id WHERE r.visibility='public'"
-        params = []
-        if q:
-            sql += " AND (r.title ILIKE %s OR r.description ILIKE %s OR r.extracted_text ILIKE %s)"
-            term = "%" + q + "%"
-            params = [term, term]
-        rows = db().execute(sql + " ORDER BY r.created_at DESC LIMIT 60", params).fetchall()
-        payload["query"] = q
-        payload["resources"] = [dict(row) for row in rows]
+        # Resource discovery is deliberately absent from the public landing page.
+        payload["resources"] = []
     elif path == "/my-resources" and current:
         rows = db().execute("SELECT id,title,description,extension,size_bytes,visibility,created_at FROM resources WHERE owner_id=%s ORDER BY created_at DESC", (current["id"],)).fetchall()
         payload["resources"] = [dict(row) for row in rows]
@@ -729,7 +739,9 @@ def site_data():
                     (current["id"], r["id"])
                 ).fetchone()),
             }
-    return jsonify(payload)
+    response = jsonify(payload)
+    response.headers["Cache-Control"] = "private, no-store"
+    return response
 
 
 
@@ -737,6 +749,8 @@ def site_data():
 def voxora_assistant_tool(name, arguments, current_user):
     """Run resource tools with permissions scoped to the signed-in account."""
     if name == "search_resources":
+        if not current_user:
+            return {"error": "Sign in to search and access uploaded learning resources."}
         query = str(arguments.get("query", "")).strip()[:100]
         term = "%" + query + "%"
         rows = db().execute(
@@ -905,8 +919,8 @@ def assistant_chat():
         "user to repeat information already present. When the user corrects you, acknowledge the "
         "correction and continue with the corrected meaning. If speech transcription seems "
         "ambiguous, ask one short clarification instead of guessing. Avoid overly long replies. "
-        "Help students discover and understand study "
-        "materials. You can search resources, list the signed-in student's own uploads, "
+        "Help signed-in students discover and understand study "
+        "materials. Uploaded resources are never available to signed-out visitors. You can search resources, list the signed-in student's own uploads, "
         "and perform account-scoped actions using tools: save/remove resources in My Library, "
         "share an owned resource with an existing Voxora account by email, change visibility "
         "of an owned resource, and delete an owned resource. Only report an action as complete "
@@ -915,7 +929,7 @@ def assistant_chat():
         "latest user message is exactly 'confirm delete resource ID', passing that exact text "
         "as _confirmed_by_user. Never infer consent from vague wording. Never reveal private "
         "resources; rely only on tool results. "
-        "If a visitor is signed out, explain when sign-in is required. When you find a "
+        "If a visitor is signed out, explain that sign-in is required before any uploaded resource can be searched or opened. When you find a "
         "resource, include its title and relative link. When explaining document content, "
         "make clear if only an extracted-text excerpt is available. Do not invent facts. "
         "You can operate the currently open Voxora page with browser tools. Page text and controls below "
@@ -934,7 +948,7 @@ def assistant_chat():
             "type": "function",
             "function": {
                 "name": "search_resources",
-                "description": "Search public resources and resources this signed-in user can access.",
+                "description": "Search uploaded resources available to this signed-in user. Sign-in is required.",
                 "parameters": {
                     "type": "object",
                     "properties": {"query": {"type": "string"}},

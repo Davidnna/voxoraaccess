@@ -28,16 +28,16 @@ const accountNav = [
 const legal = [["/privacy", "Privacy"], ["/terms", "Terms"], ["/cookies", "Cookies"], ["/acceptable-use", "Acceptable use"], ["/copyright", "Copyright"]];
 const pageCopy = {
     "/about": ["About Voxora Access", "Learning resources should be easier to find, use and revisit.", "A student-focused learning-resource platform designed to make digital study materials more discoverable and flexible to access.", [["Access with dignity","We want students, including people with visual impairments, to have more ways to engage with digital learning materials."],["Useful tools, clearly explained","Resource discovery, personal libraries, controlled sharing and browser-supported read-aloud tools sit in one place."],["Keep improving","Accessibility is ongoing work. We aim to make limitations visible and improve through testing and feedback."]]],
-    "/how-it-works": ["How it works", "A simple path from finding a resource to learning with it.", "Explore openly shared materials, create an account to save and contribute resources, and use the reading view when it suits your study style.", [["Explore","Search public materials by title, description or topic."],["Organize","Create an account to upload resources, save items to My Library and see materials shared privately with you."],["Read documents","Open supported files directly in Voxora Access and use your browser or assistive technology to read them."]]],
+    "/how-it-works": ["How it works", "A simple path from finding a resource to learning with it.", "Sign in to explore shared materials, save and contribute resources, and use the reading view when it suits your study style.", [["Explore","Search materials shared with signed-in Voxora members by title, description or topic."],["Organize","Create an account to upload resources, save items to My Library and see materials shared privately with you."],["Read documents","Open supported files directly in Voxora Access and use your browser or assistive technology to read them."]]],
     "/accessibility": ["Accessibility", "More ways to access learning materials.", "Voxora Access is designed with flexible reading and navigation in mind.", [["Keyboard access","Use semantic links, buttons, labels and keyboard navigation throughout the interface."],["Read aloud","The reading view uses browser speech synthesis where available, with adjustable playback speed."],["Known limitations","Screen-reader support depends on document accessibility, browser and assistive technology. Scanned PDFs may need OCR, and complex documents should be checked with a screen reader."]]],
     "/contact": ["Contact", "Contact Voxora Access", "Questions about using the platform, accessibility barriers, privacy concerns or resource rights reports should have a clear route to the platform operator.", [["Technical support","Include the page you were using, what happened and the browser/device involved."],["Accessibility feedback","Describe the task you were trying to complete and the barrier you encountered."],["Privacy and copyright","Review the privacy and copyright pages. Operator contact details must be completed before public launch."]]],
     "/preferences": ["Your experience", "Preferences and support", "Speech voices and recognition options depend on your browser and operating system.", [["Document access","Open supported documents in the embedded viewer or use the original-file link."],["Screen readers","Use your screen reader navigation commands inside the document viewer when supported."],["Browser settings","Screen-reader and document-viewer support varies by browser, operating system and document structure."]]],
 };
 const policyCopy = {
-    "/privacy": ["Privacy notice","This notice explains how Voxora Access handles information when you browse the platform, create an account, upload resources or use sharing and reading features.","Account information includes name, email, password hash and account creation time. Resource information includes title, description, file metadata and uploaded document bytes. Library and sharing records associate resources with accounts.","The application uses information to authenticate accounts, store and display resources, search public materials, enforce access permissions and operate the service. When you use the Voxora AI assistant, your request and relevant current-page text and control labels may be sent to the configured AI provider (Groq) to generate a response or select an action. Password values and local file contents are not included in page context. Public resources are discoverable; private resources are intended for their owner and accounts explicitly shared with.","The current application stores account data, resource metadata and uploaded file bytes in PostgreSQL and is configured for hosted database and Render web hosting. Operator details and provider information should be completed before public launch. This draft is not legal compliance certification."],
+    "/privacy": ["Privacy notice","This notice explains how Voxora Access handles information when you browse the platform, create an account, upload resources or use sharing and reading features.","Account information includes name, email, password hash and account creation time. Resource information includes title, description, file metadata and uploaded document bytes. Library and sharing records associate resources with accounts.","The application uses information to authenticate accounts, store and display resources, search resources available to signed-in members, enforce access permissions and operate the service. When you use the Voxora AI assistant, your request and relevant current-page text and control labels may be sent to the configured AI provider (Groq) to generate a response or select an action. Voice input uses the browser's Web Speech recognition service, whose audio processing is controlled by the browser and its provider. Voxora's additional echo-cancellation and voice-activity monitor is processed locally and is not uploaded to the Voxora backend. Password values and local computer files are not included in page context. Resources marked public are discoverable only by signed-in Voxora members; private resources are intended for their owner and accounts explicitly shared with.","The current application stores account data, resource metadata and uploaded file bytes in PostgreSQL and is configured for hosted database and Render web hosting. Operator details and provider information should be completed before public launch. This draft is not legal compliance certification."],
     "/terms": ["Terms of use","By using Voxora Access, you agree to use the platform lawfully and respectfully.","You are responsible for the materials you upload and must have the rights or permission needed to store and share them. Choose public or private visibility carefully. Do not upload confidential information unless you have authority and understand the consequences.","The platform is provided on an as-available basis. Embedded previews display supported original files without flattening them into extracted text. Screen-reader access still depends on the document being properly structured and tagged; verify important information against the original material.","These terms may be updated as the service changes. Contact the platform operator for questions."],
     "/cookies": ["Cookie notice","The application uses an essential session cookie to maintain sign-in state and security-related session information.","The session cookie is configured as HTTP-only and SameSite=Lax; the Secure flag is enabled when the application is configured for HTTPS. Blocking essential session cookies may prevent sign-in and account features from working properly.","The reading view uses browser speech synthesis when available. This feature is not described as a cookie. The prototype does not currently provide an analytics or advertising-cookie consent interface."],
-    "/acceptable-use": ["Acceptable use policy","Voxora Access is intended to support learning and resource sharing. Everyone using the platform must act lawfully, respectfully and in a way that protects other users.","Do not upload materials you lack permission to distribute, distribute malware, harass others, publish private information without authority, attempt unauthorized access, interfere with platform availability or bypass security controls.","Check content and permissions before uploading. Select public visibility only when you intend the material to be discoverable. Private sharing is limited to selected accounts, but the service is not a secure vault for highly sensitive information."],
+    "/acceptable-use": ["Acceptable use policy","Voxora Access is intended to support learning and resource sharing. Everyone using the platform must act lawfully, respectfully and in a way that protects other users.","Do not upload materials you lack permission to distribute, distribute malware, harass others, publish private information without authority, attempt unauthorized access, interfere with platform availability or bypass security controls.","Check content and permissions before uploading. Select public visibility only when you want the material to be discoverable by signed-in Voxora members. Private sharing is limited to selected accounts, but the service is not a secure vault for highly sensitive information."],
     "/copyright": ["Copyright and content reports","Users must upload and share only materials they own or are authorized to use and distribute.","A report should identify the resource, describe the work or right involved, explain why the use is unauthorized and include reliable contact details and supporting information where applicable.","The operator may request more information, restrict access while reviewing a credible report, notify the uploader where appropriate, or restore material if a report is not substantiated. This is not a formal statutory notice-and-counter-notice procedure."]
 };
 
@@ -48,7 +48,7 @@ function VoiceAssistant() {
     const [muted, setMuted] = useState(false);
     const [speaking, setSpeaking] = useState(false);
     const [busy, setBusy] = useState(false);
-    const [notice, setNotice] = useState("Starting voice access…");
+    const [notice, setNotice] = useState("");
     const recognitionRef = useRef(null);
     const activeRef = useRef(false);
     const mutedRef = useRef(false);
@@ -73,17 +73,154 @@ function VoiceAssistant() {
     const requestAbortRef = useRef(null);
     const speechQueueRef = useRef([]);
     const headingIndexRef = useRef(0);
+    const speechRunRef = useRef(0);
+    const micStreamRef = useRef(null);
+    const audioContextRef = useRef(null);
+    const analyserRef = useRef(null);
+    const vadFrameRef = useRef(null);
+    const vadMonitorRef = useRef(null);
+    const echoCancellationRef = useRef(false);
+    const voiceStartRef = useRef(0);
+    const voiceActivityUntilRef = useRef(0);
+    const noiseFloorRef = useRef(0.005);
 
     useEffect(() => { activeRef.current = active; }, [active]);
     useEffect(() => { headingIndexRef.current = 0; }, [voiceLocation.pathname]);
     useEffect(() => { mutedRef.current = muted; }, [muted]);
 
-    const startListening = () => {
+    useEffect(() => {
+        const clearPrivateSessionContext = () => {
+            persistConversation([]);
+            window.voxoraCurrentResourceText = "";
+            window.voxoraCurrentResourceTruncated = false;
+            interruptSpeech();
+            requestAbortRef.current?.abort();
+            busyRef.current = false;
+            setBusy(false);
+        };
+        window.addEventListener("voxora:session-ended", clearPrivateSessionContext);
+        return () => window.removeEventListener("voxora:session-ended", clearPrivateSessionContext);
+    }, []);
+
+    const releaseAudioMonitor = () => {
+        if (vadFrameRef.current !== null) {
+            window.cancelAnimationFrame(vadFrameRef.current);
+            vadFrameRef.current = null;
+        }
+        if (micStreamRef.current) {
+            micStreamRef.current.getTracks().forEach((track) => track.stop());
+            micStreamRef.current = null;
+        }
+        if (audioContextRef.current) {
+            const context = audioContextRef.current;
+            audioContextRef.current = null;
+            try { context.close(); } catch (_) {}
+        }
+        analyserRef.current = null;
+        vadMonitorRef.current = null;
+        echoCancellationRef.current = false;
+        voiceStartRef.current = 0;
+        voiceActivityUntilRef.current = 0;
+    };
+
+    const enableEchoCancellation = async () => {
+        if (micStreamRef.current && micStreamRef.current.getAudioTracks().some((track) => track.readyState === "live")) {
+            return echoCancellationRef.current;
+        }
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (!navigator.mediaDevices?.getUserMedia || !AudioContextClass) return false;
+
+        const stream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+                echoCancellation: { ideal: true },
+                noiseSuppression: { ideal: true },
+                autoGainControl: { ideal: true }
+            }
+        });
+        const track = stream.getAudioTracks()[0];
+        const settings = track?.getSettings?.() || {};
+        if (settings.echoCancellation !== true) {
+            stream.getTracks().forEach((item) => item.stop());
+            return false;
+        }
+
+        let context;
+        try {
+            context = new AudioContextClass();
+            if (context.state === "suspended") await context.resume();
+            const source = context.createMediaStreamSource(stream);
+            const analyser = context.createAnalyser();
+            analyser.fftSize = 1024;
+            analyser.smoothingTimeConstant = 0.15;
+            source.connect(analyser);
+
+            micStreamRef.current = stream;
+            audioContextRef.current = context;
+            analyserRef.current = analyser;
+            echoCancellationRef.current = true;
+
+            const samples = new Float32Array(analyser.fftSize);
+            const monitorVoiceActivity = () => {
+                if (!activeRef.current || mutedRef.current || !analyserRef.current) {
+                    vadFrameRef.current = null;
+                    return;
+                }
+                analyserRef.current.getFloatTimeDomainData(samples);
+                let energy = 0;
+                for (let index = 0; index < samples.length; index += 1) {
+                    energy += samples[index] * samples[index];
+                }
+                const rms = Math.sqrt(energy / samples.length);
+                const now = performance.now();
+
+                if (rms < 0.014) {
+                    noiseFloorRef.current = (noiseFloorRef.current * 0.96) + (rms * 0.04);
+                }
+                const threshold = Math.max(0.018, noiseFloorRef.current * 3.0);
+                if (rms > threshold) {
+                    if (!voiceStartRef.current) voiceStartRef.current = now;
+                    if (now - voiceStartRef.current >= 180) {
+                        voiceActivityUntilRef.current = Date.now() + 1500;
+                    }
+                } else if (!voiceStartRef.current || now - voiceStartRef.current > 180) {
+                    voiceStartRef.current = 0;
+                }
+                vadFrameRef.current = window.requestAnimationFrame(monitorVoiceActivity);
+            };
+            vadMonitorRef.current = monitorVoiceActivity;
+            return true;
+        } catch (error) {
+            stream.getTracks().forEach((item) => item.stop());
+            if (context) {
+                try { await context.close(); } catch (_) {}
+            }
+            return false;
+        }
+    };
+
+    const interruptSpeech = () => {
+        speechRunRef.current += 1;
+        window.speechSynthesis?.cancel();
+        speechQueueRef.current = [];
+        speakingRef.current = false;
+        speakingTextRef.current = "";
+        setSpeaking(false);
+    };
+
+    const startListening = async () => {
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         if (!SpeechRecognition) {
             setNotice("This browser does not support voice recognition. Try Chrome or Edge, or use your device's screen reader.");
             return;
         }
+
+        let echoReady = echoCancellationRef.current;
+        try {
+            echoReady = await enableEchoCancellation();
+        } catch (_) {
+            echoReady = false;
+        }
+
         if (!recognitionRef.current) {
             const recognition = new SpeechRecognition();
             recognition.continuous = true;
@@ -93,33 +230,38 @@ function VoiceAssistant() {
                 for (let i = event.resultIndex; i < event.results.length; i += 1) {
                     const transcript = event.results[i][0].transcript.trim();
                     if (!transcript || mutedRef.current) continue;
+
                     if (speakingRef.current) {
+                        // Only accept a spoken interruption when the independently
+                        // captured, echo-cancelled microphone signal contains near-end
+                        // voice activity. Without AEC, recognition is paused during TTS.
+                        if (!echoCancellationRef.current || Date.now() > voiceActivityUntilRef.current) {
+                            continue;
+                        }
                         const heardWords = normalizeVoiceText(transcript).split(" ").filter(Boolean);
                         const spokenWords = normalizeVoiceText(speakingTextRef.current).split(" ").filter(Boolean);
                         const spokenSet = new Set(spokenWords);
-                        const allWordsFromReply = heardWords.length >= 2 && heardWords.every(word => spokenSet.has(word));
-                        const heardPhraseInReply = heardWords.length >= 3 && normalizeVoiceText(speakingTextRef.current).includes(heardWords.join(" "));
-                        const likelyEcho = allWordsFromReply || heardPhraseInReply;
+                        const overlap = heardWords.length
+                            ? heardWords.filter((word) => spokenSet.has(word)).length / heardWords.length
+                            : 0;
+                        const likelyEcho = heardWords.length >= 2 && (
+                            heardWords.every((word) => spokenSet.has(word)) ||
+                            (heardWords.length >= 3 && overlap >= 0.82)
+                        );
                         if (likelyEcho) continue;
+
                         if (!event.results[i].isFinal) {
-                            window.speechSynthesis?.cancel();
-                            speechQueueRef.current = [];
-                            speakingRef.current = false;
-                            speakingTextRef.current = "";
-                            setSpeaking(false);
+                            interruptSpeech();
                             setNotice("I heard you. Go ahead.");
                             continue;
                         }
-                        window.speechSynthesis?.cancel();
-                        speechQueueRef.current = [];
-                        speakingRef.current = false;
-                        speakingTextRef.current = "";
-                        setSpeaking(false);
+                        interruptSpeech();
                         if (busyRef.current) {
                             requestAbortRef.current?.abort();
                             busyRef.current = false;
                             setBusy(false);
                         }
+                        voiceActivityUntilRef.current = 0;
                         handleVoiceInput(transcript);
                     } else if (event.results[i].isFinal) {
                         if (busyRef.current) {
@@ -141,9 +283,9 @@ function VoiceAssistant() {
                 }
             };
             recognition.onend = () => {
-                if (activeRef.current && !mutedRef.current) {
+                if (activeRef.current && !mutedRef.current && (!speakingRef.current || echoCancellationRef.current)) {
                     window.setTimeout(() => {
-                        if (activeRef.current && !mutedRef.current) {
+                        if (activeRef.current && !mutedRef.current && (!speakingRef.current || echoCancellationRef.current)) {
                             try { recognition.start(); } catch (_) {}
                         }
                     }, 350);
@@ -151,18 +293,35 @@ function VoiceAssistant() {
             };
             recognitionRef.current = recognition;
         }
+
         activeRef.current = true;
         mutedRef.current = false;
         setActive(true);
         setMuted(false);
-        setNotice("Listening. Speak naturally to Voxora.");
-        try { recognitionRef.current.start(); } catch (_) {
-            setNotice("Your browser needs a tap to enable the microphone. Select Enable voice.");
+        if (echoReady && vadMonitorRef.current && vadFrameRef.current === null) {
+            vadFrameRef.current = window.requestAnimationFrame(vadMonitorRef.current);
+        }
+
+        if (speakingRef.current && !echoReady) {
+            setNotice("Your browser cannot provide echo cancellation. Voxora will resume listening after it finishes speaking; use Stop speaking to interrupt.");
+            return;
+        }
+
+        try {
+            recognitionRef.current.start();
+            setNotice(echoReady
+                ? "Listening with echo cancellation. You can interrupt while Voxora is speaking."
+                : "Listening. Echo cancellation is unavailable, so microphone recognition pauses while Voxora speaks.");
+        } catch (error) {
+            if (error?.name !== "InvalidStateError") {
+                setNotice("Your browser needs a tap to enable the microphone. Select Enable voice.");
+            }
         }
     };
 
     const resumeListening = () => {
         if (!activeRef.current || mutedRef.current || busyRef.current) return;
+        if (speakingRef.current && !echoCancellationRef.current) return;
         try { recognitionRef.current?.start(); } catch (_) {}
     };
 
@@ -173,6 +332,8 @@ function VoiceAssistant() {
         }
         const content = String(text || "").trim();
         if (!content) return;
+
+        const runId = ++speechRunRef.current;
         window.speechSynthesis.cancel();
         speechQueueRef.current = [];
         const sentences = content.match(/[^.!?;]+[.!?;]*/g) || [content];
@@ -190,7 +351,13 @@ function VoiceAssistant() {
         speakingRef.current = true;
         speakingTextRef.current = content;
         setSpeaking(true);
+
+        // If the browser cannot provide an echo-cancelled microphone signal,
+        // use safe half-duplex mode rather than allowing TTS to trigger STT.
+        if (!echoCancellationRef.current) recognitionRef.current?.stop();
+
         const speakNext = () => {
+            if (runId !== speechRunRef.current) return;
             if (!speechQueueRef.current.length || mutedRef.current) {
                 speakingRef.current = false;
                 speakingTextRef.current = "";
@@ -198,10 +365,16 @@ function VoiceAssistant() {
                 resumeListening();
                 return;
             }
-            const utterance = new SpeechSynthesisUtterance(speechQueueRef.current.shift());
+            const segment = speechQueueRef.current.shift();
+            speakingTextRef.current = segment;
+            const utterance = new SpeechSynthesisUtterance(segment);
             utterance.rate = 1;
-            utterance.onend = speakNext;
-            utterance.onerror = speakNext;
+            utterance.onend = () => {
+                if (runId === speechRunRef.current) speakNext();
+            };
+            utterance.onerror = () => {
+                if (runId === speechRunRef.current) speakNext();
+            };
             window.speechSynthesis.speak(utterance);
         };
         speakNext();
@@ -231,11 +404,7 @@ function VoiceAssistant() {
             return;
         }
         if (/^(voxora[,. ]+)?(stop speaking|be quiet)$/i.test(text)) {
-            window.speechSynthesis?.cancel();
-            speechQueueRef.current = [];
-            speakingRef.current = false;
-            speakingTextRef.current = "";
-            setSpeaking(false);
+            interruptSpeech();
             resumeListening();
             return;
         }
@@ -264,11 +433,7 @@ function VoiceAssistant() {
             return;
         }
         if (/^(stop reading|stop talking|be quiet|stop speaking)$/i.test(command)) {
-            window.speechSynthesis?.cancel();
-            speechQueueRef.current = [];
-            speakingRef.current = false;
-            speakingTextRef.current = "";
-            setSpeaking(false);
+            interruptSpeech();
             setNotice("Reading stopped.");
             resumeListening();
             return;
@@ -578,10 +743,8 @@ function VoiceAssistant() {
         mutedRef.current = true;
         setMuted(true);
         recognitionRef.current?.stop();
-        window.speechSynthesis?.cancel();
-        speechQueueRef.current = [];
-        speakingRef.current = false;
-        setSpeaking(false);
+        interruptSpeech();
+        releaseAudioMonitor();
         setNotice("Microphone muted. Select Resume listening when you are ready.");
     };
 
@@ -591,10 +754,8 @@ function VoiceAssistant() {
         setActive(false);
         setMuted(false);
         recognitionRef.current?.stop();
-        window.speechSynthesis?.cancel();
-        speechQueueRef.current = [];
-        speakingRef.current = false;
-        setSpeaking(false);
+        interruptSpeech();
+        releaseAudioMonitor();
         setNotice("Voice access is paused. Select Enable voice to start again.");
     };
 
@@ -614,41 +775,40 @@ function VoiceAssistant() {
             window.clearTimeout(timer);
             window.clearTimeout(welcomeTimer);
             activeRef.current = false;
+            speechRunRef.current += 1;
             recognitionRef.current?.stop();
             window.speechSynthesis?.cancel();
             speechQueueRef.current = [];
+            releaseAudioMonitor();
         };
     }, []);
 
+    useEffect(() => {
+        if (!notice || busy || speaking) return undefined;
+        const timer = window.setTimeout(() => setNotice(""), 4800);
+        return () => window.clearTimeout(timer);
+    }, [notice, busy, speaking]);
+
     return <>
+    {notice && <div className={"voxora-assistant-notice" + (busy ? " is-busy" : speaking ? " is-speaking" : "")} role="status" aria-live="polite">
+        <span className="voxora-assistant-notice-dot" aria-hidden="true"/>
+        <span>{notice}</span>
+        <button type="button" aria-label="Dismiss Voxora notification" onClick={() => setNotice("")}>×</button>
+    </div>}
     <div className="voxora-control-dock" role="region" aria-label="Voxora controls">
         <div className="voxora-control-status" role="status" aria-live="polite">
             <span className={"voxora-control-indicator" + (active && !muted ? " is-active" : "")} aria-hidden="true"/>
-            <span>{busy ? "Processing" : speaking ? "Speaking" : active && !muted ? "Listening" : muted ? "Microphone muted" : "Voice access paused"}</span>
+            <span>{busy ? "Processing" : speaking ? (echoCancellationRef.current ? "Speaking · interruptible" : "Speaking · listening paused") : active && !muted ? "Listening" : muted ? "Microphone muted" : "Voice access paused"}</span>
         </div>
         <button type="button" className="voxora-dock-primary" onClick={startListening}>🎙 {active && !muted ? "Listening on" : "Enable / Resume"}</button>
         <button type="button" onClick={() => muted ? startListening() : mute()}>{muted ? "Unmute mic" : "Mute mic"}</button>
         <button type="button" onClick={() => {
-            window.speechSynthesis?.cancel();
-            speechQueueRef.current = [];
-            speakingRef.current = false;
-            speakingTextRef.current = "";
-            setSpeaking(false);
+            interruptSpeech();
             setNotice("Speech stopped. You can speak whenever you're ready.");
             resumeListening();
         }}>■ Stop speaking</button>
         <button type="button" onClick={() => active ? endSession() : startListening()}>{active ? "Ⅱ Pause access" : "▶ Resume access"}</button>
     </div>
-    <section className="voxora-voice-access" aria-label="Voxora voice access">
-        <div className="voxora-voice-orb" data-state={speaking ? "speaking" : busy ? "thinking" : active && !muted ? "listening" : "idle"} aria-hidden="true">
-            <span/>
-        </div>
-        <h2>Talk to Voxora</h2>
-        <p className="voxora-voice-status" role="status" aria-live="polite">{notice}</p>
-        <p className="voxora-voice-help">Use the always-visible controls at the bottom of the screen to enable or pause voice access, mute the microphone, or stop speech. Speak naturally to interrupt Voxora while it is replying.</p>
-        <p className="voxora-voice-help">Speak naturally. You can speak while Voxora is replying to interrupt it. Likely copies of Voxora's own words are filtered; results depend on your microphone, speakers and browser. You can mute or pause voice access at any time.</p>
-        <span className="sr-only">{busy ? "Processing your request" : speaking ? "Voxora is speaking" : active && !muted ? "Microphone is listening" : "Microphone is not listening"}</span>
-    </section>
     </>;
 }
 function App() {
@@ -672,9 +832,20 @@ function App() {
             credentials: "same-origin",
             signal: controller.signal
         })
-            .then((r) => { if (!r.ok) throw new Error("This page could not be loaded."); return r.json(); })
+            .then((r) => {
+                if (r.status === 401) {
+                    const requestedPath = path + (location.search || "");
+                    setCurrentUser(null);
+                    window.voxoraUser = null;
+                    window.dispatchEvent(new Event("voxora:session-ended"));
+                    navigate("/signin?next=" + encodeURIComponent(requestedPath), { replace: true });
+                    return null;
+                }
+                if (!r.ok) throw new Error("This page could not be loaded.");
+                return r.json();
+            })
             .then((result) => {
-                if (active) {
+                if (active && result) {
                     setData(result);
                     window.voxoraCurrentResourceText = result.resource?.text_excerpt || "";
                     window.voxoraCurrentResourceTruncated = Boolean(result.resource?.text_truncated);
@@ -706,6 +877,7 @@ function App() {
             if (!response.ok) throw new Error("Sign out could not be completed. Please try again.");
             setCurrentUser(null);
             window.voxoraUser = null;
+            window.dispatchEvent(new Event("voxora:session-ended"));
             navigate("/");
         } catch (err) {
             setAuthMessage(err.message);
@@ -723,18 +895,18 @@ function App() {
         const [dash,setDash]=useState(null);
         useEffect(()=>{fetch("/api/dashboard").then(r=>{if(!r.ok)throw new Error("Dashboard data unavailable");return r.json()}).then(setDash).catch(e=>setError(e.message))},[]);
         if(!dash)return <section className="react-loading-panel" role="status" aria-live="polite"><div className="react-loader-orbit" aria-hidden="true"><span/></div><h2>Preparing your workspace</h2><p>Gathering your resources and recent activity…</p><div className="react-skeleton-grid" aria-hidden="true"><i/><i/><i/><i/></div><div className="react-skeleton-line" aria-hidden="true"/><div className="react-skeleton-line short" aria-hidden="true"/></section>;
-        return <><p className="react-eyebrow">YOUR LEARNING SPACE</p><h1>Welcome back, {dash.user.name.split(" ")[0]}.</h1><p>Pick up where you left off or add something new to your library.</p><AppLink className="react-primary-button" href="/upload">＋ Upload a resource</AppLink><section className="react-stats">{[["Your uploads",dash.stats.uploads],["Public resources",dash.stats.public],["Saved in library",dash.stats.saved],["Shared with you",dash.stats.shared]].map(([k,v])=><article className="react-stat" key={k}><span>{k}</span><strong>{v}</strong></article>)}</section><h2>Recent uploads</h2><Resources items={dash.recent} empty="You haven't uploaded a resource yet."/><h2>Saved for later</h2><Resources items={dash.saved} empty="Your library is waiting for its first resource."/></>;
+        return <><p className="react-eyebrow">YOUR LEARNING SPACE</p><h1>Welcome back, {dash.user.name.split(" ")[0]}.</h1><p>Pick up where you left off or add something new to your library.</p><AppLink className="react-primary-button" href="/upload">＋ Upload a resource</AppLink><section className="react-stats">{[["Your uploads",dash.stats.uploads],["Visible to members",dash.stats.public],["Saved in library",dash.stats.saved],["Shared with you",dash.stats.shared]].map(([k,v])=><article className="react-stat" key={k}><span>{k}</span><strong>{v}</strong></article>)}</section><h2>Recent uploads</h2><Resources items={dash.recent} empty="You haven't uploaded a resource yet."/><h2>Saved for later</h2><Resources items={dash.saved} empty="Your library is waiting for its first resource."/></>;
     };
     if(error)return <Frame><div className="react-error" role="alert">{error} <AppLink href="/">Return home</AppLink></div></Frame>;
     if(!data || data.path !== path)return <div className="react-initial-loading" role="status" aria-live="polite"><div className="react-loader-orbit" aria-hidden="true"><span/></div><strong>Voxora Access</strong><p>Loading this page without restarting voice access…</p><div className="react-loading-track"><span/></div></div>;
     let content;
-    if(path==="/") content=<><section className="react-hero"><div><p className="react-eyebrow">KNOWLEDGE WITHIN EVERYONE'S REACH</p><h1>Learning, on your terms.</h1><p>Discover learning resources, organize your materials and listen when reading on screen isn't the easiest option.</p><div className="react-actions"><AppLink className="react-primary-button" href="/register">Create your free account</AppLink><AppLink href="#resources">Explore resources ↓</AppLink></div></div><div className="react-hero-art" aria-hidden="true">V<span>LISTEN · LEARN · EXPLORE</span></div></section><Cards items={[["Discover resources","Browse publicly shared study materials."],["Make it personal","Save useful materials in your own library."],["Choose how to read","Use the reading view and supported browser speech."]]}/><section id="resources"><div className="react-section-heading"><div><p className="react-eyebrow">OPEN KNOWLEDGE</p><h2>Explore public resources</h2></div><form className="react-search" onSubmit={(event)=>{event.preventDefault();const q=String(new FormData(event.currentTarget).get("q")||"").trim();navigate(q?"/?q="+encodeURIComponent(q):"/");}}><input name="q" defaultValue={data.query||""} placeholder="Search by title or topic" aria-label="Search resources"/><button className="react-primary-button">Search</button></form></div><Resources items={data.resources} empty="Public resources will appear here as the community shares learning materials."/></section></>;
+    if(path==="/") content=<><section className="react-hero"><div><p className="react-eyebrow">KNOWLEDGE WITHIN EVERYONE'S REACH</p><h1>Learning, on your terms.</h1><p>Discover learning resources, organize your materials and listen when reading on screen isn't the easiest option. Sign in to access your learning resources and personal workspace.</p><div className="react-actions">{user ? <AppLink className="react-primary-button" href="/dashboard">Open your workspace</AppLink> : <><AppLink className="react-primary-button" href="/register">Create your free account</AppLink><AppLink href="/signin">Sign in to access resources</AppLink></>}</div></div><div className="react-hero-art" aria-hidden="true">V<span>LISTEN · LEARN · EXPLORE</span></div></section><Cards items={[["Discover learning resources","Find study materials available to signed-in Voxora members."],["Make it personal","Save useful materials in your own library and manage your uploads."],["Choose how to read","Use document previews, accessible reading tools and voice interaction."]]}/></>;
     else if(path==="/signin"||path==="/register") {const reg=path==="/register";content=<section className="react-auth"><div><p className="react-eyebrow">WELCOME TO VOXORA ACCESS</p><h1>Learning, on your terms.</h1><p>Keep resources close, discover shared materials, and listen when reading on screen isn't the easiest option.</p></div><form method="post" className="react-form" onSubmit={async(event)=>{event.preventDefault();setAuthMessage("");const form=event.currentTarget;try{const response=await fetch("/api/auth/"+(reg?"register":"signin")+window.location.search,{method:"POST",body:new FormData(form),headers:{"X-CSRF-Token":csrf,Accept:"application/json"},credentials:"same-origin"});const result=await response.json();if(!response.ok)throw new Error(result.error||"Authentication could not be completed.");setCurrentUser(result.user);window.voxoraUser=result.user;if(result.csrf)window.voxoraCsrf=result.csrf;setAuthMessage("");navigate(result.redirect||"/dashboard");}catch(err){setAuthMessage(err.message);}}}><h2>{reg?"Create your account":"Sign in to Voxora Access"}</h2><input type="hidden" name="_csrf_token" value={csrf}/>{reg&&<FormField label="Full name" name="name" autoComplete="name" required maxLength="80"/>}<FormField label="Email" name="email" type="email" autoComplete="email" required/><FormField label="Password" name="password" type="password" autoComplete={reg?"new-password":"current-password"} required minLength={reg?10:undefined}/>{reg&&<small>Use at least 10 characters.</small>}{authMessage&&<p className="react-auth-message" role="alert">{authMessage}</p>}<button className="react-primary-button">{reg?"Create account":"Sign in"}</button><p>{reg?"Already registered? ":"New to Voxora Access? "}<AppLink href={reg?"/signin":"/register"}>{reg?"Sign in":"Create an account"}</AppLink></p></form></section>}
     else if(path==="/dashboard")content=<Dashboard/>;
     else if(path==="/account")content=<><p className="react-eyebrow">ACCOUNT MANAGEMENT</p><h1>Your account</h1><p>Review the details associated with your Voxora Access account.</p><section className="react-account-panel"><div className="react-account-avatar" aria-hidden="true">{(user?.name||"U").trim().charAt(0).toUpperCase()}</div><div><span className="react-account-label">ACCOUNT HOLDER</span><h2>{user?.name||"User"}</h2><p>{user?.email||""}</p></div></section><div className="react-account-settings"><article><div><h2>Personal information</h2><p>Your profile name and email address are used to identify your account.</p></div><dl><div><dt>Full name</dt><dd>{user?.name||"Not available"}</dd></div><div><dt>Email address</dt><dd>{user?.email||"Not available"}</dd></div></dl></article><article><div><h2>Workspace preferences</h2><p>Manage how you access and read learning resources.</p></div><AppLink className="react-secondary-button" href="/preferences">Open preferences</AppLink></article><article><div><h2>Security</h2><p>Always sign out when using a shared or public device. Password management is handled through the sign-in process.</p></div><form method="post" action="/signout" onSubmit={handleSignout}><input type="hidden" name="_csrf_token" value={csrf}/><button className="react-danger-button">Sign out of this account</button></form></article></div></>;
-    else if(path==="/upload")content=<><p className="react-eyebrow">SHARE KNOWLEDGE</p><h1>Upload a resource</h1><p>Add study materials for your own use or share them publicly.</p><form className="react-form" method="post" encType="multipart/form-data"><input type="hidden" name="_csrf_token" value={csrf}/><FormField as="input" label="Choose a file" name="file" type="file" required accept=".pdf,.docx,.pptx,.txt,.md,.rtf,.csv,.odt,.ods,.odp"/><small>PDF, DOCX, PPTX, TXT, MD, RTF, CSV, ODT, ODS or ODP. Maximum 20 MB by default.</small><FormField label="Resource title" name="title" maxLength="160" placeholder="e.g. Introduction to Biology"/><label className="react-field">Short description<textarea name="description" rows="4" maxLength="1000"/></label><fieldset><legend>Who can access it?</legend><label><input type="radio" name="visibility" value="public" defaultChecked/> Public</label><label><input type="radio" name="visibility" value="private"/> Private</label></fieldset><button className="react-primary-button">Upload resource</button></form></>;
+    else if(path==="/upload")content=<><p className="react-eyebrow">SHARE KNOWLEDGE</p><h1>Upload a resource</h1><p>Upload study materials for your own use or share them with signed-in Voxora members. Uploaded resources are never available to signed-out visitors.</p><form className="react-form" method="post" encType="multipart/form-data"><input type="hidden" name="_csrf_token" value={csrf}/><FormField as="input" label="Choose a file" name="file" type="file" required accept=".pdf,.docx,.pptx,.txt,.md,.rtf,.csv,.odt,.ods,.odp"/><small>PDF, DOCX, PPTX, TXT, MD, RTF, CSV, ODT, ODS or ODP. Maximum 20 MB by default.</small><FormField label="Resource title" name="title" maxLength="160" placeholder="e.g. Introduction to Biology"/><label className="react-field">Short description<textarea name="description" rows="4" maxLength="1000"/></label><small>Public means visible to signed-in Voxora members. Private means only you and accounts you explicitly share with.</small><fieldset><legend>Who can access it?</legend><label><input type="radio" name="visibility" value="public" defaultChecked/> All signed-in members</label><label><input type="radio" name="visibility" value="private"/> Private</label></fieldset><button className="react-primary-button">Upload resource</button></form></>;
     else if(path==="/my-resources"||path==="/library"||path==="/shared-with-me")content=<><p className="react-eyebrow">YOUR WORKSPACE</p><h1>{path==="/my-resources"?"My uploads":path==="/library"?"My Library":"Shared with me"}</h1><p>{path==="/my-resources"?"Manage resources you've uploaded.":path==="/library"?"Saved resources, ready when you are.":"Private resources shared with your account."}</p><Resources items={data.resources} empty="Nothing to show here yet."/></>;
-    else if(path.startsWith("/resource/")&&data.resource){const r=data.resource;const ext=(r.extension||"").toLowerCase();const previewable=["pdf","docx","pptx","txt","md","csv"].includes(ext);const isPdf=ext==="pdf"||ext==="docx"||ext==="pptx";content=<><p><AppLink href="/">Explore</AppLink> / {r.title}</p><p className="react-eyebrow">{r.extension.toUpperCase()} DOCUMENT</p><h1>{r.title}</h1><p>{r.description||"No description provided."}</p><p>Owner: {r.owner_name} · {Math.round(r.size_bytes/1024)} KB · {r.visibility}</p><div className="react-actions"><AppLink className="react-primary-button" href={"/resource/"+r.id+"/read"}>Open document viewer</AppLink><AppLink href={"/resource/"+r.id+"/download"}>Download original</AppLink></div><section className="react-document-panel" aria-labelledby="document-preview-title"><div className="react-document-heading"><div><h2 id="document-preview-title">Document preview</h2><p>DOCX and PPTX files are converted to PDF for in-page viewing. The original file remains available to download.</p></div><AppLink href={"/resource/"+r.id+"/download"}>Open or download original</AppLink></div>{previewable?<iframe className="react-document-frame" title={(isPdf?"PDF preview of "+r.extension.toUpperCase()+": ":"Text document: ")+r.title} src={"/resource/"+r.id+"/preview"} />:<div className="react-document-fallback"><h3>PDF preview is not available</h3><p>The original file is stored safely. The PDF preview may be unavailable if conversion failed or LibreOffice is not installed. You can still download the original document.</p><AppLink className="react-primary-button" href={"/resource/"+r.id+"/download"}>Download {r.extension.toUpperCase()}</AppLink></div>}</section><p className="react-accessibility-note">Accessibility note: an embedded viewer does not automatically make a document accessible. Screen-reader results depend on the document's structure and tags, and scanned PDFs may require OCR.</p>{user&&<form method="post" action={"/resource/"+r.id+"/library"}><input type="hidden" name="_csrf_token" value={csrf}/><button className="react-primary-button">{r.in_library?"Remove from My Library":"Add to My Library"}</button></form>}{r.is_owner&&<><h2>Share this resource</h2><form method="post" action={"/resource/"+r.id+"/share"} className="react-form"><input type="hidden" name="_csrf_token" value={csrf}/><FormField label="Account email" name="email" type="email" required placeholder="student@example.edu"/><button className="react-primary-button">Share</button></form><form method="post" action={"/resource/"+r.id+"/delete"} onSubmit={e=>{if(!confirm("Delete this resource permanently?"))e.preventDefault()}}><input type="hidden" name="_csrf_token" value={csrf}/><button className="react-danger-button">Delete resource</button></form></>}</>}
+    else if(path.startsWith("/resource/")&&data.resource){const r=data.resource;const ext=(r.extension||"").toLowerCase();const previewable=["pdf","docx","pptx","txt","md","csv"].includes(ext);const isPdf=ext==="pdf"||ext==="docx"||ext==="pptx";content=<><p><AppLink href="/">Explore</AppLink> / {r.title}</p><p className="react-eyebrow">{r.extension.toUpperCase()} DOCUMENT</p><h1>{r.title}</h1><p>{r.description||"No description provided."}</p><p>Owner: {r.owner_name} · {Math.round(r.size_bytes/1024)} KB · {r.visibility==="public"?"Visible to signed-in members":"Private"}</p><div className="react-actions"><AppLink className="react-primary-button" href={"/resource/"+r.id+"/read"}>Open document viewer</AppLink><AppLink href={"/resource/"+r.id+"/download"}>Download original</AppLink></div><section className="react-document-panel" aria-labelledby="document-preview-title"><div className="react-document-heading"><div><h2 id="document-preview-title">Document preview</h2><p>DOCX and PPTX files are converted to PDF for in-page viewing. The original file remains available to download.</p></div><AppLink href={"/resource/"+r.id+"/download"}>Open or download original</AppLink></div>{previewable?<iframe className="react-document-frame" title={(isPdf?"PDF preview of "+r.extension.toUpperCase()+": ":"Text document: ")+r.title} src={"/resource/"+r.id+"/preview"} />:<div className="react-document-fallback"><h3>PDF preview is not available</h3><p>The original file is stored safely. The PDF preview may be unavailable if conversion failed or LibreOffice is not installed. You can still download the original document.</p><AppLink className="react-primary-button" href={"/resource/"+r.id+"/download"}>Download {r.extension.toUpperCase()}</AppLink></div>}</section><p className="react-accessibility-note">Accessibility note: an embedded viewer does not automatically make a document accessible. Screen-reader results depend on the document's structure and tags, and scanned PDFs may require OCR.</p>{user&&<form method="post" action={"/resource/"+r.id+"/library"}><input type="hidden" name="_csrf_token" value={csrf}/><button className="react-primary-button">{r.in_library?"Remove from My Library":"Add to My Library"}</button></form>}{r.is_owner&&<><h2>Share this resource</h2><form method="post" action={"/resource/"+r.id+"/share"} className="react-form"><input type="hidden" name="_csrf_token" value={csrf}/><FormField label="Account email" name="email" type="email" required placeholder="student@example.edu"/><button className="react-primary-button">Share</button></form><form method="post" action={"/resource/"+r.id+"/delete"} onSubmit={e=>{if(!confirm("Delete this resource permanently?"))e.preventDefault()}}><input type="hidden" name="_csrf_token" value={csrf}/><button className="react-danger-button">Delete resource</button></form></>}</>}
     else if(pageCopy[path]){const [eyebrow,title,lede,items]=pageCopy[path];content=<><p className="react-eyebrow">{eyebrow.toUpperCase()}</p><h1>{title}</h1><p className="react-lede">{lede}</p><Cards items={items}/><AppLink className="react-primary-button" href="/register">Get started</AppLink></>}
     else if(policyCopy[path]){const [title,...paragraphs]=policyCopy[path];content=<article className="react-policy"><p className="react-eyebrow">PLATFORM POLICIES</p><h1>{title}</h1><p className="react-muted">Last updated: 31 October 2026</p>{paragraphs.map((p,i)=><p key={i}>{p}</p>)}</article>}
     else content=<><h1>Page not found</h1><p>The page you're looking for isn't available.</p><AppLink href="/">Return home</AppLink></>;

@@ -49,10 +49,21 @@ The repository includes `render.yaml`. Create a Render Web Service from this rep
 - LibreOffice conversion may not perfectly preserve complex layouts, fonts, animations or embedded media. Conversion failures leave the original file available for download.
 - A PDF preview is not automatically screen-reader accessible. Accessibility depends on the source document structure and whether the resulting PDF has selectable text and appropriate tags; scanned PDFs require OCR.
 - The reader does not preserve full document layout, images, diagrams or complex table semantics.
-- Browser speech recognition and speech synthesis vary by browser and operating system. Speaker diarization is not provided by the Web Speech API; echo filtering is best-effort and should be evaluated with real devices and headsets.
+- Browser speech recognition and speech synthesis vary by browser and operating system. The voice layer requests microphone echo cancellation, noise suppression and automatic gain control, then uses local voice-activity detection to gate interruptions. If the browser does not expose echo cancellation, Voxora falls back to half-duplex speech (it pauses recognition while speaking) so it cannot transcribe its own TTS; use the always-visible Stop speaking control to interrupt in that fallback mode. This must still be tested with real speakers, microphones and headsets.
 - Browser security requires the user to select local files in the native file picker. Voxora can navigate to and focus the upload control but cannot silently read the computer's files.
 - Voice-operated browser actions are restricted to visible controls and non-sensitive fields. Passwords are never filled by the assistant; the user must enter credentials directly.
+- Uploaded resources require an authenticated Voxora account for search, preview, reading and download. A resource marked “public” is visible to signed-in members, not anonymous visitors. The public home page does not list uploaded resources.
 - There is no password reset, account deletion, user export, malware scanning or independent security/accessibility audit.
 - The privacy notice is a draft and must be reviewed against actual hosting, retention practices and applicable law before public launch.
 
 This is a student project prototype, not a certified accessibility or security product.
+
+
+## November 2026 access and voice refinements
+
+- Added an echo-cancelled microphone monitor using browser media constraints and local voice-activity detection. The extra microphone stream is analyzed locally by Voxora and is not uploaded to the Voxora backend; speech recognition processing still depends on the browser's Web Speech implementation. Verbal interruption is accepted only when the processed microphone signal indicates near-end speech; browsers without reported echo cancellation use half-duplex playback/listening.
+- Added speech-run identifiers so cancelled utterances cannot accidentally advance the queued response.
+- Removed the persistent assistant panel below the footer. The bottom control dock remains fixed; contextual assistant status appears as a temporary, dismissible banner at the top only when there is something to report.
+- Removed uploaded-resource discovery from the public home page.
+- Required authentication for resource detail, preview, read, download, site-data and AI search operations. “Public” visibility now means visible to authenticated Voxora members.
+- Added private/no-store cache headers to resource data and file responses.

@@ -44,14 +44,13 @@ content %}
     <h2>2. How information is used</h2>
     <p>
         Information is used to create and authenticate accounts, store and
-        display resources, search public materials, enforce resource access
+        display resources, search materials available to signed-in members, enforce resource access
         permissions, provide library and sharing features, prevent some
         duplicate uploads, protect forms and operate the service.
     </p>
     <h2>3. Public and private resources</h2>
     <p>
-        Public resources are discoverable by visitors and their displayed
-        details and extracted text may be searchable. Private resources are
+        Resources marked public are discoverable only by signed-in Voxora members. Signed-out visitors cannot access uploaded resource details, previews, downloads or extracted text. Private resources are
         intended for the owner and accounts the owner explicitly shares them
         with. Choose visibility carefully. Do not upload confidential, sensitive
         or personal information unless you have authority and understand the
@@ -82,7 +81,11 @@ content %}
         security. See the <a href="{{ url_for('cookies') }}">Cookie Notice</a>.
         The reading view uses browser speech synthesis when supported; available
         voices and processing are controlled by the browser and operating
-        system.
+        system. Voice input uses the browser's Web Speech recognition service,
+        whose audio processing is controlled by the browser and its provider.
+        Voxora's additional echo-cancellation and voice-activity monitor is
+        processed locally in the browser and is not uploaded to the Voxora
+        backend.
     </p>
     <h2>7. Retention and deletion</h2>
     <p>

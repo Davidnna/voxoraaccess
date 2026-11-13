@@ -10,7 +10,7 @@ endblock %} {% block content %}
             space.
         </p>
         <div class="actions">
-            <a class="btn primary" href="#resources">Explore resources</a>
+            <a class="btn primary" href="{{ url_for('signin') }}">Sign in to access resources</a>
             {% if current_user %}
             <a class="btn outline" href="{{ url_for('dashboard') }}"
                 >Go to dashboard</a
@@ -39,7 +39,7 @@ endblock %} {% block content %}
 <section class="value-strip" aria-label="Platform principles">
     <div>
         <span>01</span><b>Discover resources</b>
-        <p>Browse publicly shared study materials.</p>
+        <p>Access learning materials after signing in.</p>
     </div>
     <div>
         <span>02</span><b>Make it personal</b>
@@ -64,7 +64,7 @@ endblock %} {% block content %}
             <span class="feature-number">01</span>
             <h3>Find what you need</h3>
             <p>
-                Search public learning resources by title, description or
+                Search learning resources available to signed-in members by title, description or
                 extracted text.
             </p>
             <a href="{{ url_for('how_it_works') }}"
@@ -111,50 +111,6 @@ endblock %} {% block content %}
         </div>
     </div>
 </section>
-<section id="resources" class="section-title">
-    <div>
-        <p class="eyebrow">Open knowledge</p>
-        <h2>Explore public resources</h2>
-        <p class="muted">
-            Browse materials that contributors have chosen to make public.
-        </p>
-    </div>
-    <form class="search" role="search">
-        <label class="sr" for="q">Search resources</label
-        ><input
-            id="q"
-            name="q"
-            value="{{ query }}"
-            placeholder="Search by title or topic"
-        /><button class="btn primary" type="submit">Search</button>
-    </form>
-</section>
-{% if resources %}
-<div class="grid">
-    {% for r in resources %}
-    <article class="card">
-        <span class="file">{{ r.extension|upper }}</span>
-        <h3><a href="{{ url_for('detail', rid=r.id) }}">{{ r.title }}</a></h3>
-        <p>{{ r.description or "A shared learning resource." }}</p>
-        <small>Shared by {{ r.owner_name }}</small
-        ><a class="link" href="{{ url_for('detail', rid=r.id) }}"
-            >View resource →</a
-        >
-    </article>
-    {% endfor %}
-</div>
-{% else %}
-<div class="empty">
-    <h2>
-        {% if query %}No matching resources{% else %}The resource shelf is
-        ready{% endif %}
-    </h2>
-    <p>
-        {% if query %}Try a different search term.{% else %}Public resources
-        will appear here as the community shares learning materials.{% endif %}
-    </p>
-</div>
-{% endif %}
 <section class="closing-cta">
     <p class="eyebrow">Knowledge within everyone's reach</p>
     <h2>Make your next study session work for you.</h2>
