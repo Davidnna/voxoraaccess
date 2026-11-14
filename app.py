@@ -389,12 +389,9 @@ def upload():
 @app.route("/resource/<int:rid>")
 @login_required
 def detail(rid):
-    r = resource(rid)
-    if not accessible(r, user()):
-        abort(404)
-    response = app.make_response(render_template("resource.html", resource=r))
-    response.headers["Cache-Control"] = "private, no-store"
-    return response
+    # The React data endpoint performs the authoritative access check. Do not
+    # fetch document text here and then fetch it a second time in /api/site.
+    return render_template("spa.html")
 
 
 @app.route("/resource/<int:rid>/preview")
@@ -485,26 +482,13 @@ def download(rid):
 @app.route("/resource/<int:rid>/read")
 @login_required
 def read(rid):
-    r = resource(rid)
-    if not accessible(r, user()):
-        abort(404)
-    response = app.make_response(render_template("read.html", resource=r))
-    response.headers["Cache-Control"] = "private, no-store"
-    return response
+    return render_template("spa.html")
 
 
 @app.route("/my-resources")
 @login_required
 def my_resources():
-    rows = (
-        db()
-        .execute(
-            "SELECT * FROM resources WHERE owner_id=%s ORDER BY created_at DESC",
-            (user()["id"],),
-        )
-        .fetchall()
-    )
-    return render_template("my_resources.html", resources=rows)
+    return render_template("spa.html")
 
 
 @app.post("/resource/<int:rid>/delete")
@@ -579,31 +563,13 @@ def library_toggle(rid):
 @app.route("/library")
 @login_required
 def library_page():
-    rows = (
-        db()
-        .execute(
-            "SELECT r.*,u.name owner_name FROM library l JOIN resources r ON r.id=l.resource_id JOIN users u ON u.id=r.owner_id WHERE l.user_id=%s ORDER BY l.created_at DESC",
-            (user()["id"],),
-        )
-        .fetchall()
-    )
-    return render_template(
-        "library.html", resources=[r for r in rows if accessible(r, user())]
-    )
+    return render_template("spa.html")
 
 
 @app.route("/shared-with-me")
 @login_required
 def shared_page():
-    rows = (
-        db()
-        .execute(
-            "SELECT r.*,u.name owner_name FROM shares s JOIN resources r ON r.id=s.resource_id JOIN users u ON u.id=r.owner_id WHERE s.user_id=%s ORDER BY s.created_at DESC",
-            (user()["id"],),
-        )
-        .fetchall()
-    )
-    return render_template("shared.html", resources=rows)
+    return render_template("spa.html")
 
 
 @app.route("/preferences")
@@ -706,11 +672,28 @@ def site_data():
         "csrf": csrf(),
         "resources": [],
         "resource": None,
+        "dashboard": None,
     }
 
     if path == "/":
         # Resource discovery is deliberately absent from the public landing page.
         payload["resources"] = []
+    elif path == "/dashboard" and current:
+        uid = current["id"]
+        stats = {
+            "uploads": db().execute("SELECT COUNT(*) AS total FROM resources WHERE owner_id=%s", (uid,)).fetchone()["total"],
+            "public": db().execute("SELECT COUNT(*) AS total FROM resources WHERE owner_id=%s AND visibility='public'", (uid,)).fetchone()["total"],
+            "saved": db().execute("SELECT COUNT(*) AS total FROM library WHERE user_id=%s", (uid,)).fetchone()["total"],
+            "shared": db().execute("SELECT COUNT(*) AS total FROM shares WHERE user_id=%s", (uid,)).fetchone()["total"],
+        }
+        recent = db().execute("SELECT id,title,extension,visibility,created_at FROM resources WHERE owner_id=%s ORDER BY created_at DESC LIMIT 5", (uid,)).fetchall()
+        saved = db().execute("SELECT r.id,r.title,r.extension FROM library l JOIN resources r ON r.id=l.resource_id WHERE l.user_id=%s ORDER BY l.created_at DESC LIMIT 5", (uid,)).fetchall()
+        payload["dashboard"] = {
+            "user": {"name": current["name"], "email": current["email"]},
+            "stats": stats,
+            "recent": [dict(row) for row in recent],
+            "saved": [dict(row) for row in saved],
+        }
     elif path == "/my-resources" and current:
         rows = db().execute("SELECT id,title,description,extension,size_bytes,visibility,created_at FROM resources WHERE owner_id=%s ORDER BY created_at DESC", (current["id"],)).fetchall()
         payload["resources"] = [dict(row) for row in rows]
@@ -1059,6 +1042,7 @@ def assistant_chat():
     ]
     conversation = [{"role": "system", "content": system_prompt}] + safe_messages
     client_actions = []
+    data_changed = False
     try:
         for _ in range(4):
             body = json.dumps({
@@ -1086,6 +1070,7 @@ def assistant_chat():
                 return jsonify({
                     "reply": message.get("content") or "I'm here. What would you like to do?",
                     "actions": client_actions,
+                    "data_changed": data_changed,
                 })
             conversation.append(message)
             for call in message["tool_calls"]:
@@ -1133,6 +1118,8 @@ def assistant_chat():
                         tool_result = {"success": True, "message": "The upload picker will be focused; the user must choose the file."}
                     else:
                         tool_result = voxora_assistant_tool(tool_name, arguments, current_user)
+                        if isinstance(tool_result, dict) and tool_result.get("success") is True:
+                            data_changed = True
                 except Exception:
                     app.logger.exception("Voxora assistant tool failed")
                     tool_result = {"error": "I couldn't complete that lookup."}
@@ -1183,41 +1170,7 @@ def dashboard_data():
 @app.route("/dashboard")
 @login_required
 def dashboard():
-    uid = user()["id"]
-    stats = {
-        "uploads": db()
-        .execute("SELECT COUNT(*) AS total FROM resources WHERE owner_id=%s", (uid,))
-        .fetchone()["total"],
-        "public": db()
-        .execute(
-            "SELECT COUNT(*) AS total FROM resources WHERE owner_id=%s AND visibility='public'",
-            (uid,),
-        )
-        .fetchone()["total"],
-        "saved": db()
-        .execute("SELECT COUNT(*) AS total FROM library WHERE user_id=%s", (uid,))
-        .fetchone()["total"],
-        "shared": db()
-        .execute("SELECT COUNT(*) AS total FROM shares WHERE user_id=%s", (uid,))
-        .fetchone()["total"],
-    }
-    recent = (
-        db()
-        .execute(
-            "SELECT id,title,extension,visibility,created_at FROM resources WHERE owner_id=%s ORDER BY created_at DESC LIMIT 5",
-            (uid,),
-        )
-        .fetchall()
-    )
-    saved = (
-        db()
-        .execute(
-            "SELECT r.id,r.title,r.extension FROM library l JOIN resources r ON r.id=l.resource_id WHERE l.user_id=%s ORDER BY l.created_at DESC LIMIT 5",
-            (uid,),
-        )
-        .fetchall()
-    )
-    return render_template("dashboard.html", stats=stats, recent=recent, saved=saved)
+    return render_template("spa.html")
 
 
 @app.route("/about")

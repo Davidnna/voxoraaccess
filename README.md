@@ -67,3 +67,26 @@ This is a student project prototype, not a certified accessibility or security p
 - Removed uploaded-resource discovery from the public home page.
 - Required authentication for resource detail, preview, read, download, site-data and AI search operations. “Public” visibility now means visible to authenticated Voxora members.
 - Added private/no-store cache headers to resource data and file responses.
+
+## Frontend application structure
+
+The browser application is mounted once from `src/main.jsx`. `BrowserRouter` owns
+client-side history, `src/App.jsx` defines the supported application routes and
+keeps the shared page shell mounted, and `src/components/VoiceAssistant.jsx`
+remains mounted alongside the route tree so route changes do not restart the
+voice session.
+
+Shared navigation labels and voice-name normalization live in
+`src/data/navigation.js`; public-page and policy copy lives in
+`src/data/pageContent.js`.
+
+Page data is loaded from `/api/site` and cached in memory for the current tab.
+The page shell remains visible during a route-data request; a compact inline
+loading status replaces the former full-viewport loading state. The dashboard
+payload is now returned by `/api/site?path=/dashboard`, avoiding a second
+request after the page has mounted. Resource list and dashboard page handlers
+serve the React shell without first loading document blobs or duplicating the
+API's database work.
+
+For local frontend verification, install the dependencies with `npm install`
+and run `npm run build`. The production image build runs the same Vite build.

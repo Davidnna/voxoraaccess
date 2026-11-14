@@ -1208,3 +1208,34 @@ body { overflow-x: hidden; }
 .voxora-control-indicator.is-active{background:#16834b;box-shadow:0 0 0 4px #16834b20}
 body{padding-bottom:5.8rem}
 @media(max-width:640px){.voxora-control-dock{bottom:.45rem;width:calc(100vw - .9rem);gap:.35rem;padding:.55rem}.voxora-control-dock button{min-height:42px;padding:.55rem .65rem;font-size:.76rem}.voxora-control-status{width:100%;justify-content:center;padding-bottom:.1rem}body{padding-bottom:8rem}}
+
+/* Route transitions keep the application shell mounted and use a compact
+   inline status instead of replacing the whole viewport with a loading page. */
+#voxora-app-root .react-route-loading {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    min-height: 8rem;
+    padding: 1.5rem;
+    color: var(--react-muted, #52665d);
+}
+
+#voxora-app-root .react-route-loading-dot {
+    width: 0.65rem;
+    height: 0.65rem;
+    flex: 0 0 auto;
+    border-radius: 50%;
+    background: var(--react-accent, #08776d);
+    box-shadow: 0 0 0 0.35rem rgb(8 119 109 / 12%);
+    animation: voxora-route-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes voxora-route-pulse {
+    50% { opacity: 0.45; transform: scale(0.82); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #voxora-app-root .react-route-loading-dot {
+        animation: none;
+    }
+}
