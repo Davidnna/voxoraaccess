@@ -10,6 +10,8 @@ export default function VoiceAssistant() {
     const [speaking, setSpeaking] = useState(false);
     const [busy, setBusy] = useState(false);
     const [notice, setNotice] = useState("");
+    const [retrySeconds, setRetrySeconds] = useState(0);
+    const rateLimitUntilRef = useRef(0);
     const recognitionRef = useRef(null);
     const activeRef = useRef(false);
     const mutedRef = useRef(false);
@@ -48,6 +50,19 @@ export default function VoiceAssistant() {
     useEffect(() => { activeRef.current = active; }, [active]);
     useEffect(() => { headingIndexRef.current = 0; }, [voiceLocation.pathname]);
     useEffect(() => { mutedRef.current = muted; }, [muted]);
+
+    useEffect(() => {
+        const timer = window.setInterval(() => {
+            if (!rateLimitUntilRef.current) return;
+            const remaining = Math.max(0, Math.ceil((rateLimitUntilRef.current - Date.now()) / 1000));
+            setRetrySeconds(remaining);
+            if (remaining === 0) {
+                rateLimitUntilRef.current = 0;
+                setNotice("The previous AI rate-limit window should have reset. You can try again.");
+            }
+        }, 1000);
+        return () => window.clearInterval(timer);
+    }, []);
 
     useEffect(() => {
         const clearPrivateSessionContext = () => {
@@ -602,6 +617,12 @@ export default function VoiceAssistant() {
     };
 
     const askAssistant = async (text, pageContext = null) => {
+        const cooldown = Math.max(0, Math.ceil((rateLimitUntilRef.current - Date.now()) / 1000));
+        if (cooldown > 0) {
+            setRetrySeconds(cooldown);
+            setNotice(`Voxora's AI service is cooling down. Please try again in ${cooldown} seconds.`);
+            return;
+        }
         const next = [...messagesRef.current, { role: "user", content: text }].slice(-20);
         persistConversation(next);
         setBusy(true);
@@ -615,10 +636,15 @@ export default function VoiceAssistant() {
                 headers: {"Content-Type": "application/json", "X-CSRF-Token": window.voxoraCsrf || "", Accept: "application/json"},
                 credentials: "same-origin",
                 signal: controller.signal,
-                body: JSON.stringify({ messages: next.slice(-12), page_context: pageContext })
+                body: JSON.stringify({ messages: next.slice(-8), page_context: pageContext })
             });
             const result = await response.json();
-            if (!response.ok) throw new Error(result.error || "Voxora couldn't respond.");
+            if (!response.ok) {
+                const requestError = new Error(result.error || "Voxora couldn't respond.");
+                requestError.code = result.code || "";
+                requestError.retryAfterSeconds = result.retry_after_seconds;
+                throw requestError;
+            }
             const actionResults = result.actions?.length ? executeBrowserActions(result.actions) : [];
             let answer = result.reply || "I'm here. What would you like to do?";
             const failedAction = actionResults.find((item) => !item.success);
@@ -637,7 +663,18 @@ export default function VoiceAssistant() {
             speak(answer);
         } catch (error) {
             if (error.name !== "AbortError") {
-                setNotice(error.message + " You can try speaking again.");
+                if (["rate_limit", "token_limit", "request_limit"].includes(error.code)) {
+                    const waitSeconds = Number(error.retryAfterSeconds || 0);
+                    if (Number.isFinite(waitSeconds) && waitSeconds > 0) {
+                        rateLimitUntilRef.current = Date.now() + waitSeconds * 1000;
+                        setRetrySeconds(waitSeconds);
+                        setNotice(`${error.message} Voxora will be ready to retry in about ${waitSeconds} seconds.`);
+                    } else {
+                        setNotice(error.message + " Groq did not provide a reset time, so Voxora will not retry automatically.");
+                    }
+                } else {
+                    setNotice(error.message + " You can try speaking again.");
+                }
                 busyRef.current = false;
                 setBusy(false);
                 resumeListening();
@@ -776,7 +813,7 @@ export default function VoiceAssistant() {
     <div className="voxora-control-dock" role="region" aria-label="Voxora controls">
         <div className="voxora-control-status" role="status" aria-live="polite">
             <span className={"voxora-control-indicator" + (active && !muted ? " is-active" : "")} aria-hidden="true"/>
-            <span>{busy ? "Processing" : speaking ? (echoCancellationRef.current ? "Speaking · interruptible" : "Speaking · listening paused") : active && !muted ? "Listening" : muted ? "Microphone muted" : "Voice access paused"}</span>
+            <span>{retrySeconds > 0 ? `AI cooldown · ${retrySeconds}s` : busy ? "Processing" : speaking ? (echoCancellationRef.current ? "Speaking · interruptible" : "Speaking · listening paused") : active && !muted ? "Listening" : muted ? "Microphone muted" : "Voice access paused"}</span>
         </div>
         <button type="button" className="voxora-dock-primary" onClick={startListening}>🎙 {active && !muted ? "Listening on" : "Enable / Resume"}</button>
         <button type="button" onClick={() => muted ? startListening() : mute()}>{muted ? "Unmute mic" : "Mute mic"}</button>

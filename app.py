@@ -1,4 +1,4 @@
-import os, secrets, hashlib, re, io, subprocess, tempfile, json, urllib.request, urllib.error
+import os, secrets, hashlib, re, io, subprocess, tempfile, json, urllib.request, urllib.error, email.utils
 from pathlib import Path
 from functools import wraps
 from datetime import datetime, timezone
@@ -870,11 +870,13 @@ def assistant_chat():
     messages = payload.get("messages", [])
     if not isinstance(messages, list) or not messages:
         return jsonify({"error": "Send a message to get started."}), 400
+    # Keep only a compact recent window. Re-sending a long transcript on every
+    # voice turn consumes the free-tier input-token allowance very quickly.
     safe_messages = []
-    for item in messages[-20:]:
+    for item in messages[-8:]:
         if not isinstance(item, dict) or item.get("role") not in ("user", "assistant"):
             continue
-        text = str(item.get("content", ""))[:3000]
+        text = str(item.get("content", ""))[:1200]
         if text.strip():
             safe_messages.append({"role": item["role"], "content": text})
     if not safe_messages or safe_messages[-1]["role"] != "user":
@@ -882,13 +884,25 @@ def assistant_chat():
 
     current_user = user()
     page_context = payload.get("page_context") if isinstance(payload.get("page_context"), dict) else {}
-    page_path = str(page_context.get("path", ""))[:240]
-    page_title = str(page_context.get("title", ""))[:240]
-    page_text = str(page_context.get("text", ""))[:7000]
-    page_controls = page_context.get("controls", [])
+    page_path = str(page_context.get("path", ""))[:180]
+    page_title = str(page_context.get("title", ""))[:180]
+    latest_request = safe_messages[-1]["content"].lower()
+    needs_page_text = bool(re.search(
+        r"\b(?:read|explain|summari[sz]e|describe|what|tell me about)\b.{0,70}\b(?:page|screen|document|section|content|text)\b|"
+        r"\b(?:page|screen|document|section|content|text)\b.{0,70}\b(?:say|mean|contain|about)\b",
+        latest_request,
+    ))
+    needs_page_controls = bool(re.search(
+        r"\b(?:click|press|select|choose|fill|submit|button|form|upload|toggle|activate)\b",
+        latest_request,
+    ))
+    # Only send page text for requests that actually ask about visible content.
+    # Only send the controls inventory for requests that involve operating a control.
+    page_text = str(page_context.get("text", ""))[:3600] if needs_page_text else ""
+    page_controls = page_context.get("controls", []) if needs_page_controls else []
     if not isinstance(page_controls, list):
         page_controls = []
-    page_controls = [item for item in page_controls[:35] if isinstance(item, dict)]
+    page_controls = [item for item in page_controls[:18] if isinstance(item, dict)]
     identity = (
         f"The signed-in student is {current_user['name']}."
         if current_user else "The visitor is not signed in."
@@ -1044,14 +1058,16 @@ def assistant_chat():
     client_actions = []
     data_changed = False
     try:
-        for _ in range(4):
+        # Three model passes support dependent tool workflows while preventing
+        # a single voice command from multiplying into an unbounded API burst.
+        for _ in range(3):
             body = json.dumps({
                 "model": "openai/gpt-oss-20b",
                 "messages": conversation,
                 "tools": tools_spec,
                 "tool_choice": "auto",
                 "temperature": 1.0,
-                "max_tokens": 700,
+                "max_tokens": 500,
             }).encode("utf-8")
             req = urllib.request.Request(
                 "https://api.groq.com/openai/v1/chat/completions",
@@ -1139,7 +1155,54 @@ def assistant_chat():
         if exc.code == 403:
             return jsonify({"error": "Groq denied this request. Check the model permissions for your Groq project."}), 502
         if exc.code == 429:
-            return jsonify({"error": "Voxora's free AI usage limit has been reached for now. Please try again later."}), 503
+            headers = exc.headers or {}
+            retry_after = None
+            retry_header = headers.get("Retry-After")
+            if retry_header:
+                try:
+                    retry_after = max(1, int(float(retry_header)))
+                except (TypeError, ValueError):
+                    try:
+                        retry_date = email.utils.parsedate_to_datetime(retry_header)
+                        if retry_date.tzinfo is None:
+                            retry_date = retry_date.replace(tzinfo=timezone.utc)
+                        retry_after = max(1, int((retry_date - datetime.now(timezone.utc)).total_seconds()))
+                    except (TypeError, ValueError, OverflowError):
+                        retry_after = None
+
+            def header_value(name):
+                value = headers.get(name)
+                return str(value).strip() if value is not None else None
+
+            rate_headers = {
+                "limit_requests": header_value("x-ratelimit-limit-requests"),
+                "remaining_requests": header_value("x-ratelimit-remaining-requests"),
+                "reset_requests": header_value("x-ratelimit-reset-requests"),
+                "limit_tokens": header_value("x-ratelimit-limit-tokens"),
+                "remaining_tokens": header_value("x-ratelimit-remaining-tokens"),
+                "reset_tokens": header_value("x-ratelimit-reset-tokens"),
+            }
+            detail = error_body.lower()
+            if "token" in detail or "tpm" in detail or "tpd" in detail:
+                limit_type = "token_limit"
+                message = "Voxora has reached Groq's current token allowance. Please wait for the token window to reset before trying again."
+            elif "request" in detail or "rpm" in detail or "rpd" in detail:
+                limit_type = "request_limit"
+                message = "Voxora has reached Groq's current request allowance. Please wait for the request window to reset before trying again."
+            else:
+                limit_type = "rate_limit"
+                message = "Voxora's Groq usage limit has been reached. Please wait for the provider's limit window to reset before trying again."
+
+            result = jsonify({
+                "error": message,
+                "code": limit_type,
+                "retry_after_seconds": retry_after,
+                "rate_limit": rate_headers,
+            })
+            result.status_code = 429
+            if retry_after is not None:
+                result.headers["Retry-After"] = str(retry_after)
+            return result
         if exc.code == 400:
             return jsonify({"error": "Groq rejected the request settings. The Voxora team has logged the details."}), 502
         return jsonify({"error": "Voxora's AI provider returned an error. Please try again shortly."}), 502
