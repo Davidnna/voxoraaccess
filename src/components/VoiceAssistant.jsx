@@ -11,7 +11,6 @@ export default function VoiceAssistant() {
     const [busy, setBusy] = useState(false);
     const [notice, setNotice] = useState("");
     const [retrySeconds, setRetrySeconds] = useState(0);
-    const [lastUsage, setLastUsage] = useState(null);
     const rateLimitUntilRef = useRef(0);
     const recognitionRef = useRef(null);
     const activeRef = useRef(false);
@@ -630,7 +629,6 @@ export default function VoiceAssistant() {
                 body: JSON.stringify({ messages: next.slice(-8), page_context: pageContext })
             });
             const result = await response.json();
-            if (result.usage) setLastUsage(result.usage);
             if (!response.ok) {
                 const requestError = new Error(result.error || "Voxora couldn't respond.");
                 requestError.code = result.code || "";
@@ -965,9 +963,6 @@ export default function VoiceAssistant() {
             <span className={"voxora-control-indicator" + (active && !muted ? " is-active" : "")} aria-hidden="true"/>
             <span>{retrySeconds > 0 ? `AI cooldown · ${retrySeconds}s` : busy ? "Processing" : speaking ? (echoCancellationRef.current ? "Speaking · interruptible" : "Speaking · listening paused") : active && !muted ? "Listening" : muted ? "Microphone muted" : "Voice access paused"}</span>
         </div>
-        {lastUsage && <div className="voxora-control-usage" aria-live="polite">
-            Last AI turn: {lastUsage.model_passes} Groq request{lastUsage.model_passes === 1 ? "" : "s"} · {Number(lastUsage.total_tokens || 0) > 0 ? Number(lastUsage.total_tokens).toLocaleString() + " tokens" : "token count unavailable"} · {lastUsage.tool_calls} tool call{lastUsage.tool_calls === 1 ? "" : "s"}
-        </div>}
         <button type="button" className="voxora-dock-primary" onClick={startListening}>🎙 {active && !muted ? "Listening on" : "Enable / Resume"}</button>
         <button type="button" onClick={() => muted ? startListening() : mute()}>{muted ? "Unmute mic" : "Mute mic"}</button>
         <button type="button" onClick={() => {

@@ -1155,13 +1155,6 @@ def assistant_chat():
             ",".join(sorted(set(tool_names_used))) or "none",
         )
 
-    def usage_payload():
-        return {
-            **usage_totals,
-            "model_passes": model_passes,
-            "tool_calls": tool_call_count,
-        }
-
     try:
         # The model is called only when AI interpretation is needed. Resource
         # and browser tools are filtered by intent to avoid sending unused schemas.
@@ -1199,7 +1192,6 @@ def assistant_chat():
                     "reply": message.get("content") or "I'm here. What would you like to do?",
                     "actions": client_actions,
                     "data_changed": data_changed,
-                    "usage": usage_payload(),
                 })
             conversation.append(message)
             for call in message["tool_calls"]:
@@ -1285,7 +1277,6 @@ def assistant_chat():
             "reply": fallback_reply,
             "actions": client_actions,
             "data_changed": data_changed,
-            "usage": usage_payload(),
         })
     except urllib.error.HTTPError as exc:
         log_usage("provider_error")
@@ -1354,9 +1345,7 @@ def assistant_chat():
                 "error": message,
                 "code": limit_type,
                 "retry_after_seconds": retry_after,
-                "rate_limit": rate_headers,
-                "usage": usage_payload(),
-            })
+                })
             result.status_code = 429
             if retry_after is not None:
                 result.headers["Retry-After"] = str(retry_after)
