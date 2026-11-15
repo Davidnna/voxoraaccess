@@ -12,6 +12,7 @@ Voxora Access is a voice-first digital accessibility and learning-resource platf
 - Can activate visible page controls, fill supported non-sensitive form fields, scroll pages and prepare the upload control.
 - Supports spoken interruption where the browser's audio capabilities allow it, with always-visible microphone, mute, pause and stop-speaking controls.
 - Uses the browser's speech recognition and speech synthesis capabilities. Microphone access requires the user's permission and a secure context (HTTPS, or localhost during development).
+- Supports multi-step browser tasks such as navigating between pages, activating visible controls, filling supported fields, selecting dropdown options, setting ordinary checkboxes and submitting supported forms. Voxora checks whether browser actions succeeded before reporting completion; ambiguous controls stop the task rather than selecting an arbitrary match.
 
 ### Learning resources and document access
 
@@ -157,7 +158,7 @@ Use localhost for microphone testing. The browser will ask for microphone permis
 
 ## AI usage and rate limits
 
-Voxora sends AI requests to Groq for conversational assistance and AI tool selection. Groq enforces model- and account-specific request and token quotas. When a quota is reached, Voxora displays the provider's available retry information and temporarily blocks repeated assistant requests. Local navigation and browser-side controls can continue to work without an AI request. Application-side optimisations reduce unnecessary context and tool cycles, but they cannot increase the quota assigned by Groq.
+Voxora sends AI requests to Groq for conversational assistance and AI tool selection. Groq enforces model- and account-specific request and token quotas. When a quota is reached, Voxora displays the provider's available retry information and temporarily blocks repeated assistant requests. Local navigation and browser-side controls can continue to work without an AI request. Application-side optimisations reduce unnecessary context and tool cycles, but they cannot increase the quota assigned by Groq. The persistent voice-control dock displays the most recent completed AI turn's Groq request count, tool-call count and token total when the provider returns usage data. The backend also writes a `VOXORA_AI_USAGE` summary to the application log for each assistant interaction, including model passes, tool calls and the prompt, completion and total token counts reported by Groq. These are per-interaction measurements, not a substitute for the authoritative usage dashboard in the Groq Console. The backend only sends resource-management or browser-action tool definitions when the recent conversation indicates that those capabilities are relevant.
 
 ## Deployment
 

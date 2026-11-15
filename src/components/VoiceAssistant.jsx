@@ -11,6 +11,7 @@ export default function VoiceAssistant() {
     const [busy, setBusy] = useState(false);
     const [notice, setNotice] = useState("");
     const [retrySeconds, setRetrySeconds] = useState(0);
+    const [lastUsage, setLastUsage] = useState(null);
     const rateLimitUntilRef = useRef(0);
     const recognitionRef = useRef(null);
     const activeRef = useRef(false);
@@ -362,13 +363,19 @@ export default function VoiceAssistant() {
             path: window.location.pathname,
             title: document.title,
             text: [(main?.innerText || "").trim(), window.voxoraCurrentResourceText || ""].filter(Boolean).join("\n\n").slice(0, 12000),
-            controls: Array.from(main?.querySelectorAll("a,button,input,select,textarea") || [])
-                .filter(element => !element.disabled && element.type !== "password" && element.type !== "hidden")
+            controls: Array.from(main?.querySelectorAll("a,button,input,select,textarea,[role='button'],[role='checkbox'],[role='switch']") || [])
+                .filter(element => !element.disabled && element.getAttribute("aria-hidden") !== "true" && element.type !== "password" && element.type !== "hidden" && element.getClientRects().length > 0)
                 .slice(0, 35)
-                .map(element => ({
-                    role: element.tagName.toLowerCase(),
-                    label: (element.innerText || element.getAttribute("aria-label") || element.getAttribute("placeholder") || element.name || "").trim().slice(0, 120)
-                }))
+                .map((element, index) => {
+                    const label = element.labels?.[0]?.innerText || element.innerText || element.getAttribute("aria-label") || element.getAttribute("placeholder") || element.getAttribute("title") || element.name || "";
+                    return {
+                        index: index + 1,
+                        role: element.getAttribute("role") || element.tagName.toLowerCase(),
+                        type: (element.type || "").toLowerCase(),
+                        label: label.trim().slice(0, 120),
+                        options: element.tagName === "SELECT" ? Array.from(element.options).slice(0, 8).map(option => option.text.trim().slice(0, 80)) : undefined
+                    };
+                })
         };
     };
 
@@ -461,45 +468,29 @@ export default function VoiceAssistant() {
         }
         const clickMatch = command.match(/^(?:click|press|activate) (?:the )?(.+)$/i);
         if (clickMatch) {
-            const wanted = normalizeVoiceText(clickMatch[1]);
-            const candidates = Array.from(document.querySelectorAll("#main-content button, #main-content a, #main-content [role='button'], #main-content input[type='submit']"))
-                .filter(element => !element.disabled && element.getAttribute("aria-hidden") !== "true");
-            const target = candidates.find(element => normalizeVoiceText(element.innerText || element.value || element.getAttribute("aria-label")) === wanted)
-                || candidates.find(element => normalizeVoiceText(element.innerText || element.value || element.getAttribute("aria-label")).includes(wanted));
-            if (target) {
-                target.focus();
-                target.click();
-                setNotice("Activated " + (target.innerText || target.getAttribute("aria-label") || "the requested control") + ".");
-            } else {
+            const results = await executeBrowserActions([{ type: "click", label: clickMatch[1] }]);
+            if (!results[0]?.success && !/more than one|several controls/i.test(results[0]?.message || "")) {
                 await askAssistant(text, getCurrentPageContext());
+            } else {
+                const message = results[0]?.message || "I could not complete that click.";
+                setNotice(message);
+                speak(message);
             }
             return;
         }
         const fillMatch = text.match(/^(?:fill|enter|type) (?:in )?(?:the )?(.+?) (?:with|as) (.+)$/i);
         if (fillMatch) {
-            const wanted = normalizeVoiceText(fillMatch[1]);
-            const value = fillMatch[2].trim();
-            const fields = Array.from(document.querySelectorAll("#main-content input, #main-content textarea, #main-content select"))
-                .filter(element => !["password", "hidden", "file", "submit", "button"].includes((element.type || "").toLowerCase()) && !element.disabled);
-            const field = fields.find(element => {
-                const label = element.labels?.[0]?.innerText || element.getAttribute("aria-label") || element.placeholder || element.name || "";
-                return normalizeVoiceText(label) === wanted || normalizeVoiceText(label).includes(wanted);
-            });
-            if (field) {
-                field.focus();
-                if (field.tagName === "SELECT") {
-                    const option = Array.from(field.options).find(item => normalizeVoiceText(item.label || item.text) === normalizeVoiceText(value));
-                    if (option) field.value = option.value;
-                } else {
-                    field.value = value;
-                }
-                field.dispatchEvent(new Event("input", { bubbles: true }));
-                field.dispatchEvent(new Event("change", { bubbles: true }));
-                setNotice("Filled " + fillMatch[1] + ". Please review it before submitting.");
-            } else if (/password/i.test(fillMatch[1])) {
+            if (/password/i.test(fillMatch[1])) {
                 speak("For your security, enter your password directly. I can help with the other fields and guide you through signing in.");
             } else {
-                await askAssistant(text, getCurrentPageContext());
+                const results = await executeBrowserActions([{ type: "fill", label: fillMatch[1], value: fillMatch[2].trim() }]);
+                if (!results[0]?.success) {
+                    await askAssistant(text, getCurrentPageContext());
+                } else {
+                    const message = results[0].message + " Please review the field before submitting.";
+                    setNotice(message);
+                    speak(message);
+                }
             }
             return;
         }
@@ -639,13 +630,15 @@ export default function VoiceAssistant() {
                 body: JSON.stringify({ messages: next.slice(-8), page_context: pageContext })
             });
             const result = await response.json();
+            if (result.usage) setLastUsage(result.usage);
             if (!response.ok) {
                 const requestError = new Error(result.error || "Voxora couldn't respond.");
                 requestError.code = result.code || "";
                 requestError.retryAfterSeconds = result.retry_after_seconds;
                 throw requestError;
             }
-            const actionResults = result.actions?.length ? executeBrowserActions(result.actions) : [];
+            const actionResults = result.actions?.length ? await executeBrowserActions(result.actions, controller.signal) : [];
+            if (controller.signal.aborted) return;
             let answer = result.reply || "I'm here. What would you like to do?";
             const failedAction = actionResults.find((item) => !item.success);
             if (failedAction) {
@@ -684,71 +677,228 @@ export default function VoiceAssistant() {
         }
     };
 
-    const executeBrowserActions = (actions) => {
+    const executeBrowserActions = async (actions, signal = null) => {
         const results = [];
+        const isAborted = () => Boolean(signal?.aborted);
+        const wait = (milliseconds) => new Promise(resolve => window.setTimeout(resolve, milliseconds));
+        const isVisible = (element) => Boolean(
+            element && !element.disabled &&
+            element.getAttribute("aria-hidden") !== "true" &&
+            element.getClientRects().length > 0
+        );
+        const controlLabel = (element) => {
+            const label = element.labels?.[0]?.innerText ||
+                element.getAttribute("aria-label") ||
+                element.innerText ||
+                element.value ||
+                element.getAttribute("placeholder") ||
+                element.getAttribute("title") ||
+                element.name || "";
+            return normalizeVoiceText(label);
+        };
+        const findUniqueControl = (selector, label) => {
+            const wanted = normalizeVoiceText(label);
+            const candidates = Array.from(document.querySelectorAll(selector)).filter(isVisible);
+            const exact = candidates.filter(element => controlLabel(element) === wanted);
+            if (exact.length === 1) return { element: exact[0] };
+            if (exact.length > 1) return { error: "I found more than one control with that exact label. Please be more specific." };
+            const partial = candidates.filter(element => controlLabel(element).includes(wanted));
+            if (partial.length === 1) return { element: partial[0] };
+            if (partial.length > 1) return { error: "Several controls match that description. Please use the full label." };
+            return { error: "I could not find a visible control labelled " + label + "." };
+        };
+        const waitForPageReady = async (expectedPath, timeout = 9000) => {
+            const started = Date.now();
+            while (Date.now() - started < timeout && !isAborted()) {
+                const main = document.querySelector("#main-content");
+                const loading = main?.querySelector(".react-route-loading");
+                if (window.location.pathname === expectedPath && main && !loading && main.innerText.trim()) {
+                    return true;
+                }
+                await wait(100);
+            }
+            return false;
+        };
+        const setNativeValue = (element, value) => {
+            const prototype = element.tagName === "TEXTAREA"
+                ? window.HTMLTextAreaElement.prototype
+                : element.tagName === "SELECT"
+                    ? window.HTMLSelectElement.prototype
+                    : window.HTMLInputElement.prototype;
+            const setter = Object.getOwnPropertyDescriptor(prototype, "value")?.set;
+            if (setter) setter.call(element, value);
+            else element.value = value;
+            element.dispatchEvent(new Event("input", { bubbles: true }));
+            element.dispatchEvent(new Event("change", { bubbles: true }));
+        };
+
         for (const action of actions) {
+            if (isAborted()) break;
             if (!action || typeof action.type !== "string") continue;
+            let result = null;
+
             if (action.type === "navigate") {
                 const target = String(action.path || "");
-                if (target.startsWith("/") && !target.startsWith("//")) {
-                    navigate(target);
-                    results.push({ success: true, message: "Opening the requested page." });
+                if (!target.startsWith("/") || target.startsWith("//")) {
+                    result = { success: false, message: "I could not open that destination." };
                 } else {
-                    results.push({ success: false, message: "I could not open that destination." });
+                    const targetUrl = new URL(target, window.location.origin);
+                    navigate(target);
+                    const ready = await waitForPageReady(targetUrl.pathname);
+                    const heading = document.querySelector("#main-content h1")?.innerText?.trim();
+                    result = ready
+                        ? { success: true, message: "Opened " + (heading || targetUrl.pathname) + "." }
+                        : { success: false, message: "The requested page did not finish loading, so I stopped the remaining actions." };
                 }
             } else if (action.type === "click") {
-                const wanted = normalizeVoiceText(action.label);
-                const elements = Array.from(document.querySelectorAll(
-                    "#main-content button, #main-content a, #main-content [role='button'], #main-content input[type='submit'], #main-content input[type='button']"
-                )).filter((item) => !item.disabled && item.getAttribute("aria-hidden") !== "true" && item.getClientRects().length > 0);
-                const element = elements.find((item) => normalizeVoiceText(item.innerText || item.value || item.getAttribute("aria-label")) === wanted)
-                    || elements.find((item) => normalizeVoiceText(item.innerText || item.value || item.getAttribute("aria-label")).includes(wanted));
-                if (element) {
-                    element.focus();
-                    element.click();
-                    results.push({ success: true, message: "Activated " + (element.innerText || action.label) + "." });
+                const found = findUniqueControl(
+                    "#main-content button, #main-content a, #main-content [role='button'], #main-content input[type='submit'], #main-content input[type='button']",
+                    action.label
+                );
+                if (!found.element) {
+                    result = { success: false, message: found.error };
                 } else {
-                    results.push({ success: false, message: "I could not find a visible control labelled " + action.label + "." });
+                    const element = found.element;
+                    const beforePath = window.location.pathname;
+                    const beforeText = document.querySelector("#main-content")?.innerText || "";
+                    const targetHref = element.tagName === "A" ? element.href : "";
+                    const form = element.closest("form");
+                    const submitsForm = Boolean(form && (
+                        element.type === "submit" ||
+                        element.getAttribute("type") === "submit" ||
+                        (element.tagName === "BUTTON" && !element.getAttribute("type"))
+                    ));
+                    element.focus();
+                    if (submitsForm && form && !form.checkValidity()) {
+                        form.reportValidity();
+                        result = { success: false, message: "The form needs a few required fields completed before I can submit it." };
+                    } else {
+                        element.click();
+                    }
+                    if (!result && targetHref) {
+                        try {
+                            const targetUrl = new URL(targetHref, window.location.origin);
+                            if (targetUrl.origin === window.location.origin && targetUrl.pathname !== beforePath) {
+                                const ready = await waitForPageReady(targetUrl.pathname);
+                                if (!ready) {
+                                    result = { success: false, message: "The link was activated, but the destination did not finish loading." };
+                                }
+                            }
+                        } catch (_) {}
+                    } else if (!result && submitsForm) {
+                        const started = Date.now();
+                        let completed = false;
+                        while (Date.now() - started < 12000 && !isAborted()) {
+                            const main = document.querySelector("#main-content");
+                            const errorNotice = main?.querySelector(".flash.error, [role='alert']");
+                            const successNotice = main?.querySelector(".flash.success, [role='status']");
+                            if (window.location.pathname !== beforePath) {
+                                completed = await waitForPageReady(window.location.pathname);
+                                break;
+                            }
+                            if (successNotice?.innerText?.trim()) {
+                                completed = true;
+                                break;
+                            }
+                            if (errorNotice?.innerText?.trim()) {
+                                result = { success: false, message: errorNotice.innerText.trim() };
+                                break;
+                            }
+                            if (!form.isConnected || (main?.innerText || "") !== beforeText) {
+                                completed = true;
+                                break;
+                            }
+                            await wait(150);
+                        }
+                        if (!result) {
+                            result = completed
+                                ? { success: true, message: "Submitted " + (action.label || "the form") + "." }
+                                : { success: false, message: "I activated the submit control, but could not verify the result. Please check the page before trying again." };
+                        }
+                    }
+                    if (!result) {
+                        await wait(120);
+                        result = { success: true, message: "Activated " + (element.innerText || element.getAttribute("aria-label") || action.label) + "." };
+                    }
                 }
             } else if (action.type === "fill") {
-                const wanted = normalizeVoiceText(action.label);
-                const elements = Array.from(document.querySelectorAll("#main-content input, #main-content textarea, #main-content select"));
-                const field = elements.find(item => {
-                    if (item.disabled || ["password", "hidden", "file"].includes((item.type || "").toLowerCase())) return false;
-                    const label = item.labels?.[0]?.innerText || item.getAttribute("aria-label") || item.placeholder || item.name || "";
-                    return normalizeVoiceText(label) === wanted;
-                });
-                if (field) {
-                    field.focus();
-                    const nextValue = String(action.value || "");
-                    const prototype = field.tagName === "TEXTAREA"
-                        ? window.HTMLTextAreaElement.prototype
-                        : field.tagName === "SELECT"
-                            ? window.HTMLSelectElement.prototype
-                            : window.HTMLInputElement.prototype;
-                    const valueSetter = Object.getOwnPropertyDescriptor(prototype, "value")?.set;
-                    if (valueSetter) valueSetter.call(field, nextValue);
-                    else field.value = nextValue;
-                    field.dispatchEvent(new Event("input", { bubbles: true }));
-                    field.dispatchEvent(new Event("change", { bubbles: true }));
-                    results.push({ success: true, message: "Filled " + action.label + "." });
+                const found = findUniqueControl(
+                    "#main-content input, #main-content textarea, #main-content select",
+                    action.label
+                );
+                if (!found.element) {
+                    result = { success: false, message: found.error };
+                } else if (["password", "hidden", "file", "submit", "button"].includes((found.element.type || "").toLowerCase())) {
+                    result = { success: false, message: "For security, I cannot fill password or file controls. Please enter or select those yourself." };
                 } else {
-                    results.push({ success: false, message: "I could not find a safe, visible field labelled " + action.label + "." });
+                    found.element.focus();
+                    setNativeValue(found.element, String(action.value ?? ""));
+                    result = { success: true, message: "Filled " + action.label + ". Please review it before submitting." };
+                }
+            } else if (action.type === "select_option") {
+                const found = findUniqueControl("#main-content select", action.label);
+                if (!found.element) {
+                    result = { success: false, message: found.error };
+                } else {
+                    const wanted = normalizeVoiceText(action.option);
+                    const options = Array.from(found.element.options);
+                    const matches = options.filter(option =>
+                        normalizeVoiceText(option.text || option.label) === wanted ||
+                        normalizeVoiceText(option.value) === wanted
+                    );
+                    if (matches.length !== 1) {
+                        result = { success: false, message: matches.length ? "More than one dropdown option matches. Please specify the exact option." : "I could not find the option " + action.option + "." };
+                    } else {
+                        found.element.focus();
+                        setNativeValue(found.element, matches[0].value);
+                        result = { success: true, message: "Selected " + matches[0].text + " in " + action.label + "." };
+                    }
+                }
+            } else if (action.type === "set_checkbox") {
+                const wanted = normalizeVoiceText(action.label);
+                const candidates = Array.from(document.querySelectorAll(
+                    "#main-content input[type='checkbox'], #main-content [role='checkbox'], #main-content [role='switch']"
+                )).filter(isVisible);
+                const matches = candidates.filter(element => controlLabel(element) === wanted || controlLabel(element).includes(wanted));
+                if (matches.length !== 1) {
+                    result = { success: false, message: matches.length ? "Several checkboxes match that description. Please use the full label." : "I could not find a visible checkbox labelled " + action.label + "." };
+                } else {
+                    const checkbox = matches[0];
+                    checkbox.focus();
+                    if (checkbox.type === "checkbox") {
+                        const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "checked")?.set;
+                        if (setter) setter.call(checkbox, Boolean(action.checked));
+                        else checkbox.checked = Boolean(action.checked);
+                        checkbox.dispatchEvent(new Event("input", { bubbles: true }));
+                        checkbox.dispatchEvent(new Event("change", { bubbles: true }));
+                    } else {
+                        const current = checkbox.getAttribute("aria-checked") === "true";
+                        if (current !== Boolean(action.checked)) checkbox.click();
+                    }
+                    result = { success: true, message: (action.checked ? "Checked " : "Unchecked ") + action.label + "." };
                 }
             } else if (action.type === "scroll") {
                 window.scrollBy({ top: action.direction === "up" ? -window.innerHeight * 0.75 : window.innerHeight * 0.75, behavior: "smooth" });
-                results.push({ success: true, message: "Scrolled the page." });
+                result = { success: true, message: "Scrolled the page " + action.direction + "." };
             } else if (action.type === "focus_upload") {
-                const focusPicker = () => {
-                    const picker = document.querySelector('#main-content input[type="file"]');
-                    if (!picker) return false;
+                const started = Date.now();
+                let picker = null;
+                while (Date.now() - started < 7000 && !picker && !isAborted()) {
+                    picker = document.querySelector('#main-content input[type="file"]');
+                    if (!picker) await wait(100);
+                }
+                if (picker) {
                     picker.focus();
                     picker.scrollIntoView({ behavior: "smooth", block: "center" });
-                    return true;
-                };
-                if (!focusPicker()) window.setTimeout(focusPicker, 650);
-                setNotice("The file chooser is ready. Select the file in your browser to continue.");
-                results.push({ success: true, message: "The upload control is being opened. Select the file in your browser to continue." });
+                    result = { success: true, message: "The upload control is ready. Select the file in your browser to continue." };
+                } else {
+                    result = { success: false, message: "I could not find the upload control on this page." };
+                }
+            }
+
+            if (result) {
+                results.push(result);
+                if (!result.success) break;
             }
         }
         return results;
@@ -815,6 +965,9 @@ export default function VoiceAssistant() {
             <span className={"voxora-control-indicator" + (active && !muted ? " is-active" : "")} aria-hidden="true"/>
             <span>{retrySeconds > 0 ? `AI cooldown · ${retrySeconds}s` : busy ? "Processing" : speaking ? (echoCancellationRef.current ? "Speaking · interruptible" : "Speaking · listening paused") : active && !muted ? "Listening" : muted ? "Microphone muted" : "Voice access paused"}</span>
         </div>
+        {lastUsage && <div className="voxora-control-usage" aria-live="polite">
+            Last AI turn: {lastUsage.model_passes} Groq request{lastUsage.model_passes === 1 ? "" : "s"} · {Number(lastUsage.total_tokens || 0) > 0 ? Number(lastUsage.total_tokens).toLocaleString() + " tokens" : "token count unavailable"} · {lastUsage.tool_calls} tool call{lastUsage.tool_calls === 1 ? "" : "s"}
+        </div>}
         <button type="button" className="voxora-dock-primary" onClick={startListening}>🎙 {active && !muted ? "Listening on" : "Enable / Resume"}</button>
         <button type="button" onClick={() => muted ? startListening() : mute()}>{muted ? "Unmute mic" : "Mute mic"}</button>
         <button type="button" onClick={() => {
