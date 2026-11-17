@@ -20,7 +20,7 @@ Voxora Access is a voice-first digital accessibility and learning-resource platf
 - Supports PDF, DOCX, PPTX, TXT, MD, RTF, CSV, ODT, ODS and ODP uploads.
 - Converts DOCX and PPTX uploads to PDF previews with LibreOffice when conversion is available; the original file remains available for download.
 - Provides embedded previews for PDF, DOCX/PPTX-converted PDF, TXT, MD and CSV resources when the required preview data is available.
-- Extracts document text for search and AI-assisted explanations. Extracted text and an embedded preview do not guarantee that a source document is fully accessible to every screen reader.
+- Provides embedded previews for supported formats. The current upload pipeline does not populate extracted document text, so resource search is based on titles and descriptions; AI explanations of document contents depend on text made available through the current page or document viewer.
 - Includes resource discovery, a personal library, private sharing between existing accounts, and public/private visibility settings.
 
 ### Accounts and resource permissions
@@ -158,7 +158,7 @@ Use localhost for microphone testing. The browser will ask for microphone permis
 
 ## AI usage and rate limits
 
-Voxora sends AI requests to Groq for conversational assistance and AI tool selection. Groq enforces model- and account-specific request and token quotas. When a quota is reached, Voxora displays the provider's available retry information and temporarily blocks repeated assistant requests. Local navigation and browser-side controls can continue to work without an AI request. Application-side optimisations reduce unnecessary context and tool cycles, but they cannot increase the quota assigned by Groq. The persistent voice-control dock displays the most recent completed AI turn's Groq request count, tool-call count and token total when the provider returns usage data. The backend also writes a `VOXORA_AI_USAGE` summary to the application log for each assistant interaction, including model passes, tool calls and the prompt, completion and total token counts reported by Groq. These are per-interaction measurements, not a substitute for the authoritative usage dashboard in the Groq Console. The backend only sends resource-management or browser-action tool definitions when the recent conversation indicates that those capabilities are relevant.
+Voxora sends AI requests to Groq for conversational assistance and AI tool selection. Groq enforces model- and account-specific request and token quotas. When a quota is reached, Voxora displays the provider's available retry information and temporarily blocks repeated assistant requests. Local navigation and browser-side controls can continue to work without an AI request. Application-side optimisations reduce unnecessary context and tool cycles, but they cannot increase the quota assigned by Groq. The backend writes a `VOXORA_AI_USAGE` summary to the application log for each assistant interaction, including model passes, tool calls and the prompt, completion and total token counts reported by Groq. These measurements are for internal diagnostics and are not displayed in the student-facing interface. The backend only sends resource-management or browser-action tool definitions when the recent conversation indicates that those capabilities are relevant.
 
 ## Deployment
 
