@@ -36,7 +36,7 @@ Voxora Access is a voice-first digital accessibility and learning-resource platf
 - React 19 and React Router for the browser application and client-side navigation.
 - Vite for building the frontend assets.
 - Flask for the backend, server-rendered application shell and JSON APIs.
-- PostgreSQL for accounts, resource metadata, sharing records, library entries and uploaded file data.
+- PostgreSQL for accounts, resource metadata, sharing records, library entries and uploaded file data, with a bounded per-worker connection pool and indexed resource-list queries. Flask emits server-side request timing logs and a `Server-Timing` response header for performance diagnostics; these measurements are not displayed in the student interface.
 - Groq's API for AI conversation and tool calling.
 - Browser speech recognition and speech synthesis for voice input and spoken output.
 
@@ -169,7 +169,7 @@ python -m compileall -q app.py tests
 python -m unittest discover -s tests -v
 ```
 
-The GitHub Actions workflow in `.github/workflows/quality.yml` runs those checks and then installs the frontend dependencies and performs a production Vite build on pushes and pull requests targeting `main`. The source regression checks cover critical project conventions and code contracts; they are not a substitute for database-backed integration tests, browser automation or accessibility testing with assistive technology.
+The GitHub Actions workflow in `.github/workflows/quality.yml` runs those checks and then installs the frontend dependencies and performs a production Vite build on pushes and pull requests targeting `main`. The source regression checks cover critical project conventions and code contracts, including database-pool configuration and consolidated resource-preview queries; they are not a substitute for database-backed integration tests, browser automation or accessibility testing with assistive technology.
 
 ## Deployment
 

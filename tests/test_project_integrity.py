@@ -87,6 +87,64 @@ class ProjectIntegrityTests(unittest.TestCase):
         self.assertIn("<VoiceAssistant/>", self.entry)
         self.assertIn("/api/assistant/chat", self.voice)
 
+
+    def test_database_connections_use_a_bounded_worker_pool(self):
+        self.assertIn("from psycopg_pool import ConnectionPool", self.backend)
+        self.assertIn("DB_POOL = ConnectionPool(", self.backend)
+        self.assertIn("min_size=1", self.backend)
+        self.assertIn("max_size=4", self.backend)
+        self.assertIn("DB_POOL.wait(timeout=10)", self.backend)
+        self.assertIn("DB_POOL.getconn()", self.backend)
+        self.assertIn("DB_POOL.putconn(c)", self.backend)
+
+    def test_server_timing_is_logged_without_student_ui_metrics(self):
+        self.assertIn("@app.after_request", self.backend)
+        self.assertIn('response.headers["Server-Timing"]', self.backend)
+        self.assertIn("VOXORA_REQUEST_TIMING", self.backend)
+        self.assertIn("db_pool_wait_ms", self.backend)
+
+    def test_user_lookup_is_cached_per_request(self):
+        user_function = next(
+            node for node in self.backend_ast.body
+            if isinstance(node, ast.FunctionDef) and node.name == "user"
+        )
+        source = ast.get_source_segment(self.backend, user_function)
+        self.assertIn("_voxora_user_loaded", source)
+        self.assertIn("_voxora_user", source)
+
+    def test_preview_fetches_binary_and_checks_access_in_one_query(self):
+        preview_function = next(
+            node for node in self.backend_ast.body
+            if isinstance(node, ast.FunctionDef) and node.name == "preview"
+        )
+        source = ast.get_source_segment(self.backend, preview_function)
+        self.assertIn("preview_payload", source)
+        self.assertIn("r.owner_id = %s", source)
+        self.assertIn("r.visibility = 'public'", source)
+        self.assertIn("FROM shares s", source)
+        self.assertNotIn("resource(rid)", source)
+        self.assertNotIn("accessible(", source)
+
+    def test_resource_page_combines_access_and_library_membership(self):
+        site_function = next(
+            node for node in self.backend_ast.body
+            if isinstance(node, ast.FunctionDef) and node.name == "site_data"
+        )
+        source = ast.get_source_segment(self.backend, site_function)
+        self.assertIn("AS in_library", source)
+        self.assertIn("FROM library l", source)
+        self.assertIn("FROM shares s", source)
+
+    def test_dashboard_counts_are_returned_by_one_query(self):
+        self.assertIn("SELECT COUNT(*) FROM resources WHERE owner_id = %s", self.backend)
+        self.assertIn("SELECT COUNT(*) FROM library WHERE user_id = %s", self.backend)
+        self.assertIn("SELECT COUNT(*) FROM shares WHERE user_id = %s", self.backend)
+
+    def test_resource_list_indexes_are_created(self):
+        self.assertIn("idx_resources_owner_created", self.backend)
+        self.assertIn("idx_library_user_created", self.backend)
+        self.assertIn("idx_shares_user_created", self.backend)
+
     def test_four_space_editor_configuration(self):
         config = (ROOT / ".editorconfig").read_text(encoding="utf-8")
         self.assertIn("indent_style = space", config)

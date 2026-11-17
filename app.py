@@ -1,4 +1,4 @@
-import os, secrets, hashlib, re, io, subprocess, tempfile, json, urllib.request, urllib.error, email.utils
+import os, secrets, hashlib, re, io, subprocess, tempfile, json, urllib.request, urllib.error, email.utils, time
 from pathlib import Path
 from functools import wraps
 from datetime import datetime, timezone
@@ -18,6 +18,7 @@ from flask import (
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from psycopg import connect as pg_connect
+from psycopg_pool import ConnectionPool
 
 BASE = Path(__file__).resolve().parent
 DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
@@ -111,6 +112,9 @@ def init():
   CREATE TABLE IF NOT EXISTS library(user_id BIGINT REFERENCES users(id) ON DELETE CASCADE,resource_id BIGINT REFERENCES resources(id) ON DELETE CASCADE,created_at TEXT NOT NULL,PRIMARY KEY(user_id,resource_id));
   CREATE INDEX IF NOT EXISTS idx_resources_public ON resources(visibility,created_at);
   CREATE INDEX IF NOT EXISTS idx_resources_sha256 ON resources(sha256);
+  CREATE INDEX IF NOT EXISTS idx_resources_owner_created ON resources(owner_id,created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_library_user_created ON library(user_id,created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_shares_user_created ON shares(user_id,created_at DESC);
   """)
         c.commit()
     finally:
@@ -119,10 +123,30 @@ def init():
 
 init()
 
+# Reuse PostgreSQL connections within each Gunicorn worker instead of opening
+# and closing a fresh TCP/TLS connection for every HTTP request. With two
+# workers and four threads per worker, this pool allows up to eight connections.
+DB_POOL = ConnectionPool(
+    conninfo=DATABASE_URL,
+    kwargs={"sslmode": "require", "row_factory": hybrid_row_factory},
+    min_size=1,
+    max_size=4,
+    timeout=10,
+    max_idle=300,
+    max_lifetime=1800,
+    open=True,
+)
+DB_POOL.wait(timeout=10)
+
 
 def db():
     if "db" not in g:
-        g.db = conn()
+        started = time.perf_counter()
+        g.db = DB_POOL.getconn()
+        g._voxora_db_pool_wait_ms = (
+            getattr(g, "_voxora_db_pool_wait_ms", 0.0)
+            + (time.perf_counter() - started) * 1000
+        )
     return g.db
 
 
@@ -130,16 +154,26 @@ def db():
 def close_db(e=None):
     c = g.pop("db", None)
     if c:
-        c.close()
+        try:
+            c.rollback()
+        except Exception:
+            c.close()
+        finally:
+            DB_POOL.putconn(c)
 
 
 def user():
-    uid = session.get("uid")
-    return (
-        db().execute("SELECT id,name,email FROM users WHERE id=%s", (uid,)).fetchone()
-        if uid
-        else None
-    )
+    # Authentication decorators, route handlers and template context processors
+    # often need the same user in one request. Resolve it once per request.
+    if not getattr(g, "_voxora_user_loaded", False):
+        uid = session.get("uid")
+        g._voxora_user = (
+            db().execute("SELECT id,name,email FROM users WHERE id=%s", (uid,)).fetchone()
+            if uid
+            else None
+        )
+        g._voxora_user_loaded = True
+    return g._voxora_user
 
 
 @app.context_processor
@@ -184,6 +218,28 @@ def render_template(template_name, *args, **kwargs):
         current_user=user(),
         flash_messages=messages,
     )
+
+
+@app.before_request
+def start_request_timer():
+    g._voxora_request_started = time.perf_counter()
+
+
+@app.after_request
+def add_request_timing(response):
+    started = getattr(g, "_voxora_request_started", None)
+    if started is not None:
+        app_ms = (time.perf_counter() - started) * 1000
+        pool_ms = getattr(g, "_voxora_db_pool_wait_ms", 0.0)
+        timing = f'app;dur={app_ms:.1f}'
+        if pool_ms:
+            timing += f', dbpool;dur={pool_ms:.1f}'
+        response.headers["Server-Timing"] = timing
+        app.logger.info(
+            "VOXORA_REQUEST_TIMING method=%s path=%s status=%s app_ms=%.1f db_pool_wait_ms=%.1f",
+            request.method, request.path, response.status_code, app_ms, pool_ms,
+        )
+    return response
 
 
 @app.before_request
@@ -397,47 +453,61 @@ def detail(rid):
 @app.route("/resource/<int:rid>/preview")
 @login_required
 def preview(rid):
-    r = resource(rid)
-    if not accessible(r, user()):
+    current = user()
+    # Fetch the metadata and preview bytes in one permission-scoped query. The
+    # previous implementation performed separate user, resource, permission,
+    # and binary-data lookups for a single preview request.
+    preview_row = db().execute(
+        """
+        SELECT
+            r.extension,
+            r.original_name,
+            CASE
+                WHEN r.extension IN ('docx', 'pptx') THEN r.preview_data
+                WHEN r.extension IN ('pdf', 'txt', 'md', 'csv') THEN r.file_data
+                ELSE NULL
+            END AS preview_payload
+        FROM resources r
+        WHERE r.id = %s
+          AND (
+              r.owner_id = %s
+              OR r.visibility = 'public'
+              OR EXISTS (
+                  SELECT 1 FROM shares s
+                  WHERE s.resource_id = r.id AND s.user_id = %s
+              )
+          )
+        """,
+        (rid, current["id"], current["id"]),
+    ).fetchone()
+    if not preview_row:
         abort(404)
-    extension = (r["extension"] or "").lower()
-    if extension in {"docx", "pptx"}:
-        preview_row = (
-            db()
-            .execute(
-                "SELECT preview_data FROM resources WHERE id = %s",
-                (rid,),
-            )
-            .fetchone()
-        )
-        preview_data = preview_row["preview_data"] if preview_row else None
-        if not preview_data:
+
+    extension = (preview_row["extension"] or "").lower()
+    inline_types = {
+        "pdf": "application/pdf",
+        "docx": "application/pdf",
+        "pptx": "application/pdf",
+        "txt": "text/plain; charset=utf-8",
+        "md": "text/plain; charset=utf-8",
+        "csv": "text/plain; charset=utf-8",
+    }
+    mimetype = inline_types.get(extension)
+    if not mimetype:
+        abort(415, "Inline preview is not available for this document type.")
+
+    preview_data = preview_row["preview_payload"]
+    if not preview_data:
+        if extension in {"docx", "pptx"}:
             abort(415, "A PDF preview is not available for this document.")
-        payload = bytes(preview_data)
-        mimetype = "application/pdf"
-        preview_name = f"{Path(r['original_name']).stem}.pdf"
-    else:
-        inline_types = {
-            "pdf": "application/pdf",
-            "txt": "text/plain; charset=utf-8",
-            "md": "text/plain; charset=utf-8",
-            "csv": "text/plain; charset=utf-8",
-        }
-        mimetype = inline_types.get(extension)
-        if not mimetype:
-            abort(415, "Inline preview is not available for this document type.")
-        file_row = (
-            db()
-            .execute(
-                "SELECT file_data FROM resources WHERE id = %s",
-                (rid,),
-            )
-            .fetchone()
-        )
-        if not file_row or file_row["file_data"] is None:
-            abort(404)
-        payload = bytes(file_row["file_data"])
-        preview_name = r["original_name"]
+        abort(404)
+
+    payload = bytes(preview_data)
+    preview_name = (
+        f"{Path(preview_row['original_name']).stem}.pdf"
+        if extension in {"docx", "pptx"}
+        else preview_row["original_name"]
+    )
 
     response = send_file(
         io.BytesIO(payload),
@@ -680,12 +750,16 @@ def site_data():
         payload["resources"] = []
     elif path == "/dashboard" and current:
         uid = current["id"]
-        stats = {
-            "uploads": db().execute("SELECT COUNT(*) AS total FROM resources WHERE owner_id=%s", (uid,)).fetchone()["total"],
-            "public": db().execute("SELECT COUNT(*) AS total FROM resources WHERE owner_id=%s AND visibility='public'", (uid,)).fetchone()["total"],
-            "saved": db().execute("SELECT COUNT(*) AS total FROM library WHERE user_id=%s", (uid,)).fetchone()["total"],
-            "shared": db().execute("SELECT COUNT(*) AS total FROM shares WHERE user_id=%s", (uid,)).fetchone()["total"],
-        }
+        stats = dict(db().execute(
+            """
+            SELECT
+                (SELECT COUNT(*) FROM resources WHERE owner_id = %s) AS uploads,
+                (SELECT COUNT(*) FROM resources WHERE owner_id = %s AND visibility = 'public') AS public,
+                (SELECT COUNT(*) FROM library WHERE user_id = %s) AS saved,
+                (SELECT COUNT(*) FROM shares WHERE user_id = %s) AS shared
+            """,
+            (uid, uid, uid, uid),
+        ).fetchone())
         recent = db().execute("SELECT id,title,extension,visibility,created_at FROM resources WHERE owner_id=%s ORDER BY created_at DESC LIMIT 5", (uid,)).fetchall()
         saved = db().execute("SELECT r.id,r.title,r.extension FROM library l JOIN resources r ON r.id=l.resource_id WHERE l.user_id=%s ORDER BY l.created_at DESC LIMIT 5", (uid,)).fetchall()
         payload["dashboard"] = {
@@ -706,21 +780,43 @@ def site_data():
     elif path.startswith("/resource/"):
         match = re.match(r"^/resource/(\d+)(?:/read)?$", path)
         if match:
-            r = resource(int(match.group(1)))
-            if not accessible(r, current):
+            uid = current["id"]
+            r = db().execute(
+                """
+                SELECT
+                    r.id, r.owner_id, r.title, r.description, r.extension,
+                    r.size_bytes, r.visibility, r.extracted_text,
+                    u.name AS owner_name,
+                    EXISTS (
+                        SELECT 1 FROM library l
+                        WHERE l.user_id = %s AND l.resource_id = r.id
+                    ) AS in_library
+                FROM resources r
+                JOIN users u ON u.id = r.owner_id
+                WHERE r.id = %s
+                  AND (
+                      r.owner_id = %s
+                      OR r.visibility = 'public'
+                      OR EXISTS (
+                          SELECT 1 FROM shares s
+                          WHERE s.resource_id = r.id AND s.user_id = %s
+                      )
+                  )
+                """,
+                (uid, int(match.group(1)), uid, uid),
+            ).fetchone()
+            if not r:
                 abort(404)
+            extracted_text = r["extracted_text"] or ""
             payload["resource"] = {
                 "id": r["id"], "title": r["title"], "description": r["description"],
                 "extension": r["extension"], "size_bytes": r["size_bytes"],
                 "visibility": r["visibility"], "owner_id": r["owner_id"],
                 "owner_name": r["owner_name"],
-                "text_excerpt": (r["extracted_text"] or "")[:16000],
-                "text_truncated": len(r["extracted_text"] or "") > 16000,
-                "is_owner": bool(current and current["id"] == r["owner_id"]),
-                "in_library": bool(current and db().execute(
-                    "SELECT 1 FROM library WHERE user_id=%s AND resource_id=%s",
-                    (current["id"], r["id"])
-                ).fetchone()),
+                "text_excerpt": extracted_text[:16000],
+                "text_truncated": len(extracted_text) > 16000,
+                "is_owner": uid == r["owner_id"],
+                "in_library": bool(r["in_library"]),
             }
     response = jsonify(payload)
     response.headers["Cache-Control"] = "private, no-store"
@@ -1363,12 +1459,16 @@ def assistant_chat():
 @login_required
 def dashboard_data():
     uid = user()["id"]
-    stats = {
-        "uploads": db().execute("SELECT COUNT(*) AS total FROM resources WHERE owner_id=%s", (uid,)).fetchone()["total"],
-        "public": db().execute("SELECT COUNT(*) AS total FROM resources WHERE owner_id=%s AND visibility='public'", (uid,)).fetchone()["total"],
-        "saved": db().execute("SELECT COUNT(*) AS total FROM library WHERE user_id=%s", (uid,)).fetchone()["total"],
-        "shared": db().execute("SELECT COUNT(*) AS total FROM shares WHERE user_id=%s", (uid,)).fetchone()["total"],
-    }
+    stats = dict(db().execute(
+        """
+        SELECT
+            (SELECT COUNT(*) FROM resources WHERE owner_id = %s) AS uploads,
+            (SELECT COUNT(*) FROM resources WHERE owner_id = %s AND visibility = 'public') AS public,
+            (SELECT COUNT(*) FROM library WHERE user_id = %s) AS saved,
+            (SELECT COUNT(*) FROM shares WHERE user_id = %s) AS shared
+        """,
+        (uid, uid, uid, uid),
+    ).fetchone())
     recent = db().execute("SELECT id,title,extension,visibility,created_at FROM resources WHERE owner_id=%s ORDER BY created_at DESC LIMIT 5", (uid,)).fetchall()
     saved = db().execute("SELECT r.id,r.title,r.extension FROM library l JOIN resources r ON r.id=l.resource_id WHERE l.user_id=%s ORDER BY l.created_at DESC LIMIT 5", (uid,)).fetchall()
     return jsonify({
