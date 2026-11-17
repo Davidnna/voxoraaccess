@@ -1429,7 +1429,10 @@ def spa_fallback(client_path):
 
 @app.errorhandler(413)
 def too_large(e):
-    flash(f"Files must be {MAX_MB} MB or smaller.", "error")
+    message = f"Files must be {MAX_MB} MB or smaller."
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify({"error": message}), 413
+    flash(message, "error")
     return redirect(url_for("upload"))
 
 

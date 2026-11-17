@@ -160,6 +160,17 @@ Use localhost for microphone testing. The browser will ask for microphone permis
 
 Voxora sends AI requests to Groq for conversational assistance and AI tool selection. Groq enforces model- and account-specific request and token quotas. When a quota is reached, Voxora displays the provider's available retry information and temporarily blocks repeated assistant requests. Local navigation and browser-side controls can continue to work without an AI request. Application-side optimisations reduce unnecessary context and tool cycles, but they cannot increase the quota assigned by Groq. The backend writes a `VOXORA_AI_USAGE` summary to the application log for each assistant interaction, including model passes, tool calls and the prompt, completion and total token counts reported by Groq. These measurements are for internal diagnostics and are not displayed in the student-facing interface. The backend only sends resource-management or browser-action tool definitions when the recent conversation indicates that those capabilities are relevant.
 
+## Quality checks
+
+Run the dependency-free source regression checks and Python syntax validation locally:
+
+```bash
+python -m compileall -q app.py tests
+python -m unittest discover -s tests -v
+```
+
+The GitHub Actions workflow in `.github/workflows/quality.yml` runs those checks and then installs the frontend dependencies and performs a production Vite build on pushes and pull requests targeting `main`. The source regression checks cover critical project conventions and code contracts; they are not a substitute for database-backed integration tests, browser automation or accessibility testing with assistive technology.
+
 ## Deployment
 
 The repository includes a `Dockerfile` and `render.yaml` for deployment. The Render service builds the React frontend, installs the Python dependencies and starts Flask with Gunicorn. Configure `DATABASE_URL` and `GROQ_API_KEY` as secret environment variables in the hosting dashboard. Keep `VOXORA_HTTPS=1` in an HTTPS deployment and use a stable `VOXORA_SECRET_KEY` so user sessions remain valid across restarts.
