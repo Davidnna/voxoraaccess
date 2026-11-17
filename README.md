@@ -169,7 +169,7 @@ python -m compileall -q app.py tests
 python -m unittest discover -s tests -v
 ```
 
-The GitHub Actions workflow in `.github/workflows/quality.yml` runs those checks and then installs the frontend dependencies and performs a production Vite build on pushes and pull requests targeting `main`. The source regression checks cover critical project conventions and code contracts, including database-pool configuration, private preview-cache validation and database timing instrumentation; they are not a substitute for database-backed integration tests, browser automation or accessibility testing with assistive technology.
+The GitHub Actions workflow in `.github/workflows/quality.yml` runs those checks and then installs the frontend dependencies and performs a production Vite build on pushes and pull requests targeting `main`. The source regression checks cover critical project conventions, database and preview-delivery contracts, and selected accessibility semantics such as skip navigation, focus indicators, voice-control names and document-preview alternatives. These source checks are not a substitute for browser-based WCAG evaluation, database-backed integration tests, or manual testing with NVDA, JAWS, Narrator and mobile screen readers.
 
 ## Deployment
 

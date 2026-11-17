@@ -1084,7 +1084,7 @@ body {
 #voxora-app-root .react-form textarea:focus-visible,
 #voxora-app-root .react-search input:focus-visible {
     border-color: var(--react-teal);
-    outline: 3px solid #007a7825;
+    outline: 3px solid var(--react-teal);
     outline-offset: 1px;
 }
 @keyframes voxora-spin { to { transform: rotate(360deg); } }
@@ -1144,7 +1144,7 @@ body {
 .voxora-assistant-controls{display:flex;gap:.45rem;flex-wrap:wrap;padding:0 1rem .7rem}
 .voxora-assistant-controls button{background:white;color:#075e58}
 .voxora-assistant-footnote{margin:0;padding:0 1rem 1rem;line-height:1.4}
-.voxora-assistant-root button:focus-visible,.voxora-assistant-compose input:focus-visible{outline:3px solid #e3a62d;outline-offset:2px}
+.voxora-assistant-root button:focus-visible,.voxora-assistant-compose input:focus-visible{outline:3px solid #075e58;outline-offset:3px}
 @media(max-width:480px){.voxora-assistant-root{right:.7rem;bottom:.7rem}.voxora-assistant-panel{right:-.1rem;width:calc(100vw - 1.4rem)}}
 
 
@@ -1195,7 +1195,7 @@ body {
     cursor:pointer;
 }
 .voxora-assistant-notice button:hover{background:#edf7f2}
-.voxora-assistant-notice button:focus-visible{outline:3px solid #d99c28;outline-offset:2px}
+.voxora-assistant-notice button:focus-visible{outline:3px solid #075e58;outline-offset:3px}
 @media(max-width:640px){
     .voxora-assistant-notice{top:.5rem;width:calc(100vw - 1rem);padding:.7rem .8rem;font-size:.82rem}
 }
@@ -1206,7 +1206,7 @@ body {
 .voxora-control-dock button:hover{background:#edf7f2}
 .voxora-control-dock .voxora-dock-primary{background:#075e58;color:#fff}
 .voxora-control-dock .voxora-dock-primary:hover{background:#064b47}
-.voxora-control-dock button:focus-visible{outline:3px solid #d99c28;outline-offset:3px}
+.voxora-control-dock button:focus-visible{outline:3px solid #075e58;outline-offset:3px}
 .voxora-control-status{display:flex;align-items:center;gap:.45rem;padding:0 .45rem;font-size:.82rem;font-weight:750;white-space:nowrap}
 .voxora-control-indicator{width:9px;height:9px;border-radius:50%;background:#9a6b24}
 .voxora-control-indicator.is-active{background:#16834b;box-shadow:0 0 0 4px #16834b20}

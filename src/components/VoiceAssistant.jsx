@@ -959,18 +959,19 @@ export default function VoiceAssistant() {
         <button type="button" aria-label="Dismiss Voxora notification" onClick={() => setNotice("")}>×</button>
     </div>}
     <div className="voxora-control-dock" role="region" aria-label="Voxora controls">
-        <div className="voxora-control-status" role="status" aria-live="polite">
+        <div className="voxora-control-status" role="status" aria-live="polite" aria-atomic="true">
             <span className={"voxora-control-indicator" + (active && !muted ? " is-active" : "")} aria-hidden="true"/>
-            <span>{retrySeconds > 0 ? `AI cooldown · ${retrySeconds}s` : busy ? "Processing" : speaking ? (echoCancellationRef.current ? "Speaking · interruptible" : "Speaking · listening paused") : active && !muted ? "Listening" : muted ? "Microphone muted" : "Voice access paused"}</span>
+            <span>{retrySeconds > 0 ? "AI cooldown" : busy ? "Processing" : speaking ? (echoCancellationRef.current ? "Speaking · interruptible" : "Speaking · listening paused") : active && !muted ? "Listening" : muted ? "Microphone muted" : "Voice access paused"}</span>
+            {retrySeconds > 0 && <span aria-hidden="true">· {retrySeconds}s</span>}
         </div>
-        <button type="button" className="voxora-dock-primary" onClick={startListening}>🎙 {active && !muted ? "Listening on" : "Enable / Resume"}</button>
-        <button type="button" onClick={() => muted ? startListening() : mute()}>{muted ? "Unmute mic" : "Mute mic"}</button>
+        <button type="button" className="voxora-dock-primary" onClick={startListening}><span aria-hidden="true">🎙</span> {active && !muted ? "Listening on" : "Enable / Resume"}</button>
+        <button type="button" aria-pressed={muted} onClick={() => muted ? startListening() : mute()}>Mute microphone</button>
         <button type="button" onClick={() => {
             interruptSpeech();
             setNotice("Speech stopped. You can speak whenever you're ready.");
             resumeListening();
-        }}>■ Stop speaking</button>
-        <button type="button" onClick={() => active ? endSession() : startListening()}>{active ? "Ⅱ Pause access" : "▶ Resume access"}</button>
+        }}><span aria-hidden="true">■</span> Stop speaking</button>
+        <button type="button" onClick={() => active ? endSession() : startListening()}><span aria-hidden="true">{active ? "Ⅱ" : "▶"}</span> {active ? "Pause access" : "Resume access"}</button>
     </div>
     </>;
 }
