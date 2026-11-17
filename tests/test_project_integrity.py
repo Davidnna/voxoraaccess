@@ -145,6 +145,70 @@ class ProjectIntegrityTests(unittest.TestCase):
         self.assertIn("idx_library_user_created", self.backend)
         self.assertIn("idx_shares_user_created", self.backend)
 
+    def test_preview_hash_is_persisted_for_safe_etag_validation(self):
+        self.assertIn("preview_sha256 TEXT", self.backend)
+        self.assertIn("preview_size_bytes BIGINT", self.backend)
+        self.assertIn("ALTER TABLE resources ADD COLUMN IF NOT EXISTS preview_sha256 TEXT", self.backend)
+        self.assertIn("ALTER TABLE resources ADD COLUMN IF NOT EXISTS preview_size_bytes BIGINT", self.backend)
+        self.assertIn("hashlib.sha256(preview_data).hexdigest()", self.backend)
+        self.assertIn("preview_data,preview_sha256,preview_size_bytes,created_at", self.backend)
+
+    def test_preview_supports_private_cache_revalidation(self):
+        preview_function = next(
+            node for node in self.backend_ast.body
+            if isinstance(node, ast.FunctionDef) and node.name == "preview"
+        )
+        source = ast.get_source_segment(self.backend, preview_function)
+        self.assertIn('request.headers.get("If-None-Match")', source)
+        self.assertIn("request.if_none_match.contains_weak(preview_digest)", source)
+        self.assertIn('response.set_etag(preview_digest)', source)
+        self.assertIn('"private, no-cache, must-revalidate"', source)
+        self.assertIn('response.headers["Vary"] = "Cookie"', source)
+        self.assertNotIn('"private, no-store"', source)
+
+    def test_preview_head_and_not_modified_requests_avoid_binary_fetch(self):
+        preview_function = next(
+            node for node in self.backend_ast.body
+            if isinstance(node, ast.FunctionDef) and node.name == "preview"
+        )
+        source = ast.get_source_segment(self.backend, preview_function)
+        self.assertIn('request.method == "HEAD"', source)
+        self.assertIn('response.content_length = preview_size', source)
+        self.assertIn('response = Response(status=304)', source)
+        self.assertIn('r.preview_size_bytes ELSE r.size_bytes END AS preview_size', source)
+        self.assertNotIn('octet_length(', source)
+
+    def test_server_timing_separates_database_query_time(self):
+        self.assertIn("def timed_fetchone(", self.backend)
+        self.assertIn("def timed_fetchall(", self.backend)
+        self.assertIn("db;dur=", self.backend)
+        self.assertIn("db_ms=%.1f", self.backend)
+
+    def test_site_api_database_queries_are_timed(self):
+        site_function = next(
+            node for node in self.backend_ast.body
+            if isinstance(node, ast.FunctionDef) and node.name == "site_data"
+        )
+        source = ast.get_source_segment(self.backend, site_function)
+        self.assertIn("timed_fetchone(", source)
+        self.assertIn("timed_fetchall(", source)
+
+    def test_react_shell_does_not_load_the_legacy_stylesheet(self):
+        shell = (ROOT / "templates" / "spa.html").read_text(encoding="utf-8")
+        dashboard_css = (ROOT / "src" / "dashboard.css").read_text(encoding="utf-8")
+        self.assertNotIn("css/style.css", shell)
+        self.assertIn("font: 16px/1.65 Inter", dashboard_css)
+        self.assertIn("color: var(--react-teal)", dashboard_css)
+
+    def test_legacy_preview_hash_backfill_uses_the_same_access_scope(self):
+        preview_function = next(
+            node for node in self.backend_ast.body
+            if isinstance(node, ast.FunctionDef) and node.name == "preview"
+        )
+        source = ast.get_source_segment(self.backend, preview_function)
+        self.assertIn('"SELECT r.preview_data " + access_sql', source)
+        self.assertNotIn("WHERE id = %s AND owner_id = %s OR", source)
+
     def test_four_space_editor_configuration(self):
         config = (ROOT / ".editorconfig").read_text(encoding="utf-8")
         self.assertIn("indent_style = space", config)

@@ -14,6 +14,7 @@ from flask import (
     abort,
     send_file,
     jsonify,
+    Response,
 )
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
@@ -106,8 +107,10 @@ def init():
     try:
         c.execute("""
   CREATE TABLE IF NOT EXISTS users(id BIGSERIAL PRIMARY KEY,name TEXT NOT NULL,email TEXT UNIQUE NOT NULL,password_hash TEXT NOT NULL,created_at TEXT NOT NULL);
-  CREATE TABLE IF NOT EXISTS resources(id BIGSERIAL PRIMARY KEY,owner_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,title TEXT NOT NULL,description TEXT NOT NULL DEFAULT '',original_name TEXT NOT NULL,stored_name TEXT UNIQUE NOT NULL,extension TEXT NOT NULL,mime_type TEXT NOT NULL,size_bytes BIGINT NOT NULL,sha256 TEXT NOT NULL,visibility TEXT NOT NULL CHECK(visibility IN ('public','private')),extracted_text TEXT NOT NULL DEFAULT '',file_data BYTEA NOT NULL,preview_data BYTEA,created_at TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS resources(id BIGSERIAL PRIMARY KEY,owner_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,title TEXT NOT NULL,description TEXT NOT NULL DEFAULT '',original_name TEXT NOT NULL,stored_name TEXT UNIQUE NOT NULL,extension TEXT NOT NULL,mime_type TEXT NOT NULL,size_bytes BIGINT NOT NULL,sha256 TEXT NOT NULL,visibility TEXT NOT NULL CHECK(visibility IN ('public','private')),extracted_text TEXT NOT NULL DEFAULT '',file_data BYTEA NOT NULL,preview_data BYTEA,preview_sha256 TEXT,preview_size_bytes BIGINT,created_at TEXT NOT NULL);
   ALTER TABLE resources ADD COLUMN IF NOT EXISTS preview_data BYTEA;
+  ALTER TABLE resources ADD COLUMN IF NOT EXISTS preview_sha256 TEXT;
+  ALTER TABLE resources ADD COLUMN IF NOT EXISTS preview_size_bytes BIGINT;
   CREATE TABLE IF NOT EXISTS shares(resource_id BIGINT REFERENCES resources(id) ON DELETE CASCADE,user_id BIGINT REFERENCES users(id) ON DELETE CASCADE,created_at TEXT NOT NULL,PRIMARY KEY(resource_id,user_id));
   CREATE TABLE IF NOT EXISTS library(user_id BIGINT REFERENCES users(id) ON DELETE CASCADE,resource_id BIGINT REFERENCES resources(id) ON DELETE CASCADE,created_at TEXT NOT NULL,PRIMARY KEY(user_id,resource_id));
   CREATE INDEX IF NOT EXISTS idx_resources_public ON resources(visibility,created_at);
@@ -150,6 +153,39 @@ def db():
     return g.db
 
 
+def timed_fetchone(sql, params=()):
+    started = time.perf_counter()
+    try:
+        return db().execute(sql, params).fetchone()
+    finally:
+        g._voxora_db_query_ms = (
+            getattr(g, "_voxora_db_query_ms", 0.0)
+            + (time.perf_counter() - started) * 1000
+        )
+
+
+def timed_fetchall(sql, params=()):
+    started = time.perf_counter()
+    try:
+        return db().execute(sql, params).fetchall()
+    finally:
+        g._voxora_db_query_ms = (
+            getattr(g, "_voxora_db_query_ms", 0.0)
+            + (time.perf_counter() - started) * 1000
+        )
+
+
+def timed_execute(sql, params=()):
+    started = time.perf_counter()
+    try:
+        return db().execute(sql, params)
+    finally:
+        g._voxora_db_query_ms = (
+            getattr(g, "_voxora_db_query_ms", 0.0)
+            + (time.perf_counter() - started) * 1000
+        )
+
+
 @app.teardown_appcontext
 def close_db(e=None):
     c = g.pop("db", None)
@@ -168,7 +204,7 @@ def user():
     if not getattr(g, "_voxora_user_loaded", False):
         uid = session.get("uid")
         g._voxora_user = (
-            db().execute("SELECT id,name,email FROM users WHERE id=%s", (uid,)).fetchone()
+            timed_fetchone("SELECT id,name,email FROM users WHERE id=%s", (uid,))
             if uid
             else None
         )
@@ -231,13 +267,16 @@ def add_request_timing(response):
     if started is not None:
         app_ms = (time.perf_counter() - started) * 1000
         pool_ms = getattr(g, "_voxora_db_pool_wait_ms", 0.0)
+        db_ms = getattr(g, "_voxora_db_query_ms", 0.0)
         timing = f'app;dur={app_ms:.1f}'
+        if db_ms:
+            timing += f', db;dur={db_ms:.1f}'
         if pool_ms:
             timing += f', dbpool;dur={pool_ms:.1f}'
         response.headers["Server-Timing"] = timing
         app.logger.info(
-            "VOXORA_REQUEST_TIMING method=%s path=%s status=%s app_ms=%.1f db_pool_wait_ms=%.1f",
-            request.method, request.path, response.status_code, app_ms, pool_ms,
+            "VOXORA_REQUEST_TIMING method=%s path=%s status=%s app_ms=%.1f db_ms=%.1f db_pool_wait_ms=%.1f",
+            request.method, request.path, response.status_code, app_ms, db_ms, pool_ms,
         )
     return response
 
@@ -265,12 +304,10 @@ def accessible(r, u):
     if r["visibility"] == "public":
         return True
     return bool(
-        db()
-        .execute(
+        timed_fetchone(
             "SELECT 1 FROM shares WHERE resource_id=%s AND user_id=%s",
             (r["id"], u["id"]),
         )
-        .fetchone()
     )
 
 
@@ -398,6 +435,18 @@ def upload():
             return render_template("upload.html")
         preview_data = convert_office_to_pdf(file_data, original) if ext in {"docx", "pptx"} else None
         digest = hashlib.sha256(file_data).hexdigest()
+        preview_digest = (
+            hashlib.sha256(preview_data).hexdigest()
+            if preview_data is not None
+            else digest if ext in {"pdf", "txt", "md", "csv"}
+            else None
+        )
+        preview_size = (
+            len(preview_data)
+            if preview_data is not None
+            else len(file_data) if ext in {"pdf", "txt", "md", "csv"}
+            else None
+        )
         uid = user()["id"]
         dup = (
             db()
@@ -412,7 +461,7 @@ def upload():
             return redirect(url_for("detail", rid=dup["id"]))
         try:
             db().execute(
-                "INSERT INTO resources(owner_id,title,description,original_name,stored_name,extension,mime_type,size_bytes,sha256,visibility,extracted_text,file_data,preview_data,created_at) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                "INSERT INTO resources(owner_id,title,description,original_name,stored_name,extension,mime_type,size_bytes,sha256,visibility,extracted_text,file_data,preview_data,preview_sha256,preview_size_bytes,created_at) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
                 (
                     uid,
                     title or Path(original).stem,
@@ -427,6 +476,8 @@ def upload():
                     "",
                     file_data,
                     preview_data,
+                    preview_digest,
+                    preview_size,
                     now(),
                 ),
             )
@@ -450,23 +501,11 @@ def detail(rid):
     return render_template("spa.html")
 
 
-@app.route("/resource/<int:rid>/preview")
+@app.route("/resource/<int:rid>/preview", methods=["GET", "HEAD"])
 @login_required
 def preview(rid):
     current = user()
-    # Fetch the metadata and preview bytes in one permission-scoped query. The
-    # previous implementation performed separate user, resource, permission,
-    # and binary-data lookups for a single preview request.
-    preview_row = db().execute(
-        """
-        SELECT
-            r.extension,
-            r.original_name,
-            CASE
-                WHEN r.extension IN ('docx', 'pptx') THEN r.preview_data
-                WHEN r.extension IN ('pdf', 'txt', 'md', 'csv') THEN r.file_data
-                ELSE NULL
-            END AS preview_payload
+    access_sql = """
         FROM resources r
         WHERE r.id = %s
           AND (
@@ -477,9 +516,38 @@ def preview(rid):
                   WHERE s.resource_id = r.id AND s.user_id = %s
               )
           )
-        """,
-        (rid, current["id"], current["id"]),
-    ).fetchone()
+    """
+    params = (rid, current["id"], current["id"])
+
+    # Conditional requests and HEAD requests need only metadata. A matching
+    # ETag can therefore be revalidated without retrieving the PDF BYTEA.
+    conditional_request = bool(request.headers.get("If-None-Match"))
+    metadata_only = request.method == "HEAD" or conditional_request
+    if metadata_only:
+        preview_row = timed_fetchone(
+            """
+            SELECT
+                r.extension, r.original_name,
+                CASE WHEN r.extension IN ('docx', 'pptx')
+                    THEN r.preview_sha256 ELSE r.sha256 END AS preview_etag,
+                CASE WHEN r.extension IN ('docx', 'pptx')
+                    THEN r.preview_size_bytes ELSE r.size_bytes END AS preview_size
+            """ + access_sql,
+            params,
+        )
+    else:
+        preview_row = timed_fetchone(
+            """
+            SELECT
+                r.extension, r.original_name,
+                CASE WHEN r.extension IN ('docx', 'pptx')
+                    THEN r.preview_sha256 ELSE r.sha256 END AS preview_etag,
+                CASE WHEN r.extension IN ('docx', 'pptx')
+                    THEN r.preview_data ELSE r.file_data END AS preview_payload
+            """ + access_sql,
+            params,
+        )
+
     if not preview_row:
         abort(404)
 
@@ -496,30 +564,116 @@ def preview(rid):
     if not mimetype:
         abort(415, "Inline preview is not available for this document type.")
 
-    preview_data = preview_row["preview_payload"]
-    if not preview_data:
-        if extension in {"docx", "pptx"}:
-            abort(415, "A PDF preview is not available for this document.")
-        abort(404)
-
-    payload = bytes(preview_data)
     preview_name = (
         f"{Path(preview_row['original_name']).stem}.pdf"
         if extension in {"docx", "pptx"}
         else preview_row["original_name"]
     )
+    preview_digest = preview_row["preview_etag"]
+    preview_size = preview_row.get("preview_size") if metadata_only else None
+    preview_data = preview_row.get("preview_payload") if not metadata_only else None
 
-    response = send_file(
-        io.BytesIO(payload),
-        mimetype=mimetype,
-        as_attachment=False,
-        download_name=preview_name,
-        conditional=True,
-    )
+    # Existing DOCX/PPTX records predate preview_sha256. Backfill the digest
+    # once, on first access, so later revalidation can avoid loading the blob.
+    if metadata_only and preview_size is None:
+        if extension not in {"docx", "pptx"}:
+            abort(404)
+        # Legacy converted previews have no stored size/hash yet. Load and
+        # backfill this metadata once; subsequent HEAD/304 checks stay small.
+        legacy_row = timed_fetchone(
+            "SELECT r.preview_data " + access_sql,
+            params,
+        )
+        if not legacy_row or not legacy_row["preview_data"]:
+            abort(415, "A PDF preview is not available for this document.")
+        preview_data = bytes(legacy_row["preview_data"])
+        preview_size = len(preview_data)
+        if not preview_digest:
+            preview_digest = hashlib.sha256(preview_data).hexdigest()
+        timed_execute(
+            "UPDATE resources SET preview_sha256 = COALESCE(preview_sha256, %s), preview_size_bytes = COALESCE(preview_size_bytes, %s) WHERE id = %s",
+            (preview_digest, preview_size, rid),
+        )
+        db().commit()
+
+    if metadata_only and not preview_digest:
+        # This is a defensive fallback for any older row whose preview size
+        # was populated independently of its content digest.
+        legacy_row = timed_fetchone(
+            "SELECT r.preview_data " + access_sql,
+            params,
+        )
+        if not legacy_row or not legacy_row["preview_data"]:
+            abort(415, "A PDF preview is not available for this document.")
+        preview_data = bytes(legacy_row["preview_data"])
+        preview_digest = hashlib.sha256(preview_data).hexdigest()
+        preview_size = len(preview_data)
+        timed_execute(
+            "UPDATE resources SET preview_sha256 = %s, preview_size_bytes = COALESCE(preview_size_bytes, %s) WHERE id = %s",
+            (preview_digest, preview_size, rid),
+        )
+        db().commit()
+
+    if metadata_only and preview_digest and (
+        request.if_none_match.star_tag
+        or request.if_none_match.contains_weak(preview_digest)
+    ):
+        response = Response(status=304)
+        response.set_etag(preview_digest)
+    elif request.method == "HEAD":
+        response = Response(status=200, mimetype=mimetype)
+        response.content_length = preview_size
+        response.headers["Content-Disposition"] = f'inline; filename="{preview_name}"'
+        if preview_digest:
+            response.set_etag(preview_digest)
+    else:
+        if preview_data is None:
+            payload_row = timed_fetchone(
+                """
+                SELECT
+                    CASE WHEN r.extension IN ('docx', 'pptx')
+                        THEN r.preview_data ELSE r.file_data END AS preview_payload,
+                    CASE WHEN r.extension IN ('docx', 'pptx')
+                        THEN r.preview_sha256 ELSE r.sha256 END AS preview_etag
+                """ + access_sql,
+                params,
+            )
+            if not payload_row or payload_row["preview_payload"] is None:
+                if extension in {"docx", "pptx"}:
+                    abort(415, "A PDF preview is not available for this document.")
+                abort(404)
+            preview_data = bytes(payload_row["preview_payload"])
+            preview_digest = payload_row["preview_etag"]
+
+        if not preview_data:
+            if extension in {"docx", "pptx"}:
+                abort(415, "A PDF preview is not available for this document.")
+            abort(404)
+
+        if not preview_digest:
+            preview_digest = hashlib.sha256(preview_data).hexdigest()
+            if extension in {"docx", "pptx"}:
+                timed_execute(
+                    "UPDATE resources SET preview_sha256 = COALESCE(preview_sha256, %s), preview_size_bytes = COALESCE(preview_size_bytes, %s) WHERE id = %s",
+                    (preview_digest, len(preview_data), rid),
+                )
+                db().commit()
+
+        response = send_file(
+            io.BytesIO(preview_data),
+            mimetype=mimetype,
+            as_attachment=False,
+            download_name=preview_name,
+            conditional=True,
+            etag=preview_digest,
+        )
+
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'self'"
-    response.headers["Content-Disposition"] = "inline"
-    response.headers["Cache-Control"] = "private, no-store"
+    response.headers["Content-Disposition"] = f'inline; filename="{preview_name}"'
+    response.headers["Cache-Control"] = "private, no-cache, must-revalidate"
+    response.headers["Vary"] = "Cookie"
+    response.headers["Accept-Ranges"] = "bytes"
     return response
 
 
@@ -750,7 +904,7 @@ def site_data():
         payload["resources"] = []
     elif path == "/dashboard" and current:
         uid = current["id"]
-        stats = dict(db().execute(
+        stats = dict(timed_fetchone(
             """
             SELECT
                 (SELECT COUNT(*) FROM resources WHERE owner_id = %s) AS uploads,
@@ -759,9 +913,9 @@ def site_data():
                 (SELECT COUNT(*) FROM shares WHERE user_id = %s) AS shared
             """,
             (uid, uid, uid, uid),
-        ).fetchone())
-        recent = db().execute("SELECT id,title,extension,visibility,created_at FROM resources WHERE owner_id=%s ORDER BY created_at DESC LIMIT 5", (uid,)).fetchall()
-        saved = db().execute("SELECT r.id,r.title,r.extension FROM library l JOIN resources r ON r.id=l.resource_id WHERE l.user_id=%s ORDER BY l.created_at DESC LIMIT 5", (uid,)).fetchall()
+        ))
+        recent = timed_fetchall("SELECT id,title,extension,visibility,created_at FROM resources WHERE owner_id=%s ORDER BY created_at DESC LIMIT 5", (uid,))
+        saved = timed_fetchall("SELECT r.id,r.title,r.extension FROM library l JOIN resources r ON r.id=l.resource_id WHERE l.user_id=%s ORDER BY l.created_at DESC LIMIT 5", (uid,))
         payload["dashboard"] = {
             "user": {"name": current["name"], "email": current["email"]},
             "stats": stats,
@@ -769,19 +923,19 @@ def site_data():
             "saved": [dict(row) for row in saved],
         }
     elif path == "/my-resources" and current:
-        rows = db().execute("SELECT id,title,description,extension,size_bytes,visibility,created_at FROM resources WHERE owner_id=%s ORDER BY created_at DESC", (current["id"],)).fetchall()
+        rows = timed_fetchall("SELECT id,title,description,extension,size_bytes,visibility,created_at FROM resources WHERE owner_id=%s ORDER BY created_at DESC", (current["id"],))
         payload["resources"] = [dict(row) for row in rows]
     elif path == "/library" and current:
-        rows = db().execute("SELECT r.id,r.owner_id,r.title,r.description,r.extension,r.size_bytes,r.visibility,u.name owner_name FROM library l JOIN resources r ON r.id=l.resource_id JOIN users u ON u.id=r.owner_id WHERE l.user_id=%s ORDER BY l.created_at DESC", (current["id"],)).fetchall()
+        rows = timed_fetchall("SELECT r.id,r.owner_id,r.title,r.description,r.extension,r.size_bytes,r.visibility,u.name owner_name FROM library l JOIN resources r ON r.id=l.resource_id JOIN users u ON u.id=r.owner_id WHERE l.user_id=%s ORDER BY l.created_at DESC", (current["id"],))
         payload["resources"] = [dict(row) for row in rows if accessible(row, current)]
     elif path == "/shared-with-me" and current:
-        rows = db().execute("SELECT r.id,r.title,r.description,r.extension,r.size_bytes,r.visibility,u.name owner_name FROM shares s JOIN resources r ON r.id=s.resource_id JOIN users u ON u.id=r.owner_id WHERE s.user_id=%s ORDER BY s.created_at DESC", (current["id"],)).fetchall()
+        rows = timed_fetchall("SELECT r.id,r.title,r.description,r.extension,r.size_bytes,r.visibility,u.name owner_name FROM shares s JOIN resources r ON r.id=s.resource_id JOIN users u ON u.id=r.owner_id WHERE s.user_id=%s ORDER BY s.created_at DESC", (current["id"],))
         payload["resources"] = [dict(row) for row in rows]
     elif path.startswith("/resource/"):
         match = re.match(r"^/resource/(\d+)(?:/read)?$", path)
         if match:
             uid = current["id"]
-            r = db().execute(
+            r = timed_fetchone(
                 """
                 SELECT
                     r.id, r.owner_id, r.title, r.description, r.extension,
@@ -804,7 +958,7 @@ def site_data():
                   )
                 """,
                 (uid, int(match.group(1)), uid, uid),
-            ).fetchone()
+            )
             if not r:
                 abort(404)
             extracted_text = r["extracted_text"] or ""

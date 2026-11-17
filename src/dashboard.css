@@ -25,6 +25,7 @@
 }
 
 #voxora-app-root a {
+    color: var(--react-teal);
     text-underline-offset: 3px;
 }
 
@@ -837,7 +838,10 @@ html, body, #voxora-app-root {
     min-height: 100%;
     margin: 0;
 }
-body { overflow-x: hidden; }
+body {
+    overflow-x: hidden;
+    font: 16px/1.65 Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
 #voxora-app-root { width: 100%; max-width: none; }
 #voxora-app-root .react-site-frame {
     display: flex;
