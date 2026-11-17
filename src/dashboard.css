@@ -9,6 +9,8 @@
     --react-surface: #ffffff;
     --react-soft: #f5f8f3;
     --react-shadow: 0 16px 44px rgba(18, 55, 42, .08);
+    --voxora-control-dock-height: 7rem;
+    --voxora-control-dock-bottom: 1rem;
 }
 
 #voxora-app-root {
@@ -110,6 +112,10 @@
 }
 
 #voxora-app-root .react-topbar-actions a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 32px;
+    padding-block: 4px;
     color: var(--react-forest);
     font-size: 12px;
     font-weight: 750;
@@ -334,6 +340,10 @@
 }
 
 #voxora-app-root .react-actions a:not(.react-primary-button) {
+    display: inline-flex;
+    align-items: center;
+    min-height: 32px;
+    padding-block: 4px;
     color: var(--react-teal);
     font-size: 13px;
     font-weight: 800;
@@ -373,13 +383,19 @@
 }
 
 #voxora-app-root .react-content-card h2 a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 32px;
     color: var(--react-forest);
     text-decoration: none;
 }
 
 #voxora-app-root .react-content-card > a:last-child {
-    display: inline-block;
+    display: inline-flex;
+    align-items: center;
+    min-height: 32px;
     margin-top: 10px;
+    padding-block: 4px;
     color: var(--react-teal);
     font-size: 12px;
     font-weight: 850;
@@ -667,6 +683,10 @@
 }
 
 #voxora-app-root .react-site-footer a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 32px;
+    padding-block: 4px;
     color: #e8f2e9;
     font-size: 12px;
     text-decoration: none;
@@ -927,7 +947,7 @@ body {
     position: fixed;
     z-index: 40;
     right: max(18px, env(safe-area-inset-right));
-    bottom: calc(8.5rem + env(safe-area-inset-bottom));
+    bottom: calc(var(--voxora-control-dock-height, 7rem) + var(--voxora-control-dock-bottom, 1rem) + 1rem + env(safe-area-inset-bottom));
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -1097,7 +1117,6 @@ body {
     #voxora-app-root .react-workspace-footer nav { justify-content: flex-start; }
 }
 @media (max-width: 640px) {
-    #voxora-app-root .react-scroll-top { bottom: calc(10.25rem + env(safe-area-inset-bottom)); }
     #voxora-app-root .react-topbar { align-items: flex-start; }
     #voxora-app-root .react-workspace-topbar { display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 12px; }
     #voxora-app-root .react-workspace-actions { flex-wrap: wrap; gap: 8px; }
@@ -1221,7 +1240,7 @@ body {
 }
 
 /* Persistent, always-visible Voxora controls */
-.voxora-control-dock{position:fixed;left:50%;bottom:1rem;transform:translateX(-50%);z-index:3000;display:flex;align-items:center;justify-content:center;gap:.55rem;flex-wrap:wrap;width:min(900px,calc(100vw - 2rem));padding:.7rem .85rem;border:1px solid #c9d9d0;border-radius:18px;background:#ffffffF2;box-shadow:0 12px 38px #142d2540;backdrop-filter:blur(14px);color:#183d34}
+.voxora-control-dock{position:fixed;left:50%;bottom:calc(var(--voxora-control-dock-bottom, 1rem) + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:3000;display:flex;align-items:center;justify-content:center;gap:.55rem;flex-wrap:wrap;width:min(900px,calc(100vw - 2rem));padding:.7rem .85rem;border:1px solid #c9d9d0;border-radius:18px;background:#ffffffF2;box-shadow:0 12px 38px #142d2540;backdrop-filter:blur(14px);color:#183d34}
 .voxora-control-dock button{min-height:44px;padding:.65rem .85rem;border:1px solid #0b6c63;border-radius:999px;background:#fff;color:#075e58;font:inherit;font-size:.88rem;font-weight:750;cursor:pointer}
 .voxora-control-dock button:hover{background:#edf7f2}
 .voxora-control-dock .voxora-dock-primary{background:#075e58;color:#fff}
@@ -1230,8 +1249,8 @@ body {
 .voxora-control-status{display:flex;align-items:center;gap:.45rem;padding:0 .45rem;font-size:.82rem;font-weight:750;white-space:nowrap}
 .voxora-control-indicator{width:9px;height:9px;border-radius:50%;background:#9a6b24}
 .voxora-control-indicator.is-active{background:#16834b;box-shadow:0 0 0 4px #16834b20}
-body{padding-bottom:7.5rem}
-@media(max-width:640px){.voxora-control-dock{bottom:.45rem;width:calc(100vw - .9rem);gap:.35rem;padding:.55rem}.voxora-control-dock button{min-height:42px;padding:.55rem .65rem;font-size:.76rem}.voxora-control-status{width:100%;justify-content:center;padding-bottom:.1rem}body{padding-bottom:9.2rem}}
+body{padding-bottom:calc(var(--voxora-control-dock-height, 7rem) + var(--voxora-control-dock-bottom, 1rem) + 1.25rem + env(safe-area-inset-bottom))}
+@media(max-width:640px){:root{--voxora-control-dock-bottom:.45rem;--voxora-control-dock-height:14rem}.voxora-control-dock{bottom:calc(var(--voxora-control-dock-bottom,.45rem) + env(safe-area-inset-bottom));width:calc(100vw - .9rem);gap:.35rem;padding:.55rem}.voxora-control-dock button{min-height:42px;padding:.55rem .65rem;font-size:.76rem}.voxora-control-status{width:100%;justify-content:center;padding-bottom:.1rem}body{padding-bottom:calc(var(--voxora-control-dock-height, 9.2rem) + var(--voxora-control-dock-bottom, .45rem) + 1.25rem + env(safe-area-inset-bottom))}}
 
 /* Route transitions keep the application shell mounted and use a compact
    inline status instead of replacing the whole viewport with a loading page. */

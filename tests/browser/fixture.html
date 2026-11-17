@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#12372A" />
+    <title>Voxora Access browser test</title>
+    <link rel="stylesheet" href="/static/dist/app.css" />
+</head>
+<body>
+    <div id="voxora-app-root">
+        <div role="status">Loading Voxora Access…</div>
+    </div>
+    <script>
+        const fixtureParams = new URLSearchParams(window.location.search);
+        const requestedRoute = fixtureParams.get("route") || "/";
+        const signedOut = fixtureParams.get("signedOut") === "1";
+        window.history.replaceState({}, "", requestedRoute);
+        window.voxoraInitialPath = requestedRoute;
+        window.voxoraCsrf = "browser-test-csrf-token";
+        window.voxoraUser = signedOut ? null : {
+            id: 7,
+            name: "Accessibility Test Student",
+            email: "student@example.test"
+        };
+        window.voxoraFlashMessages = [];
+        window.localStorage.setItem("voxora-welcomed-v1", "1");
+    </script>
+    <script type="module" src="/static/dist/app.js"></script>
+</body>
+</html>

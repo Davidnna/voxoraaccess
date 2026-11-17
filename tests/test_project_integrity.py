@@ -19,10 +19,13 @@ class ProjectIntegrityTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
 
     def test_readme_is_the_only_markdown_file(self):
+        ignored_dirs = {".git", ".pytest_cache", ".mypy_cache", ".ruff_cache", "node_modules", ".venv"}
         markdown = sorted(
             path.relative_to(ROOT).as_posix()
             for path in ROOT.rglob("*")
-            if path.is_file() and path.suffix.lower() in {".md", ".markdown"}
+            if path.is_file()
+            and path.suffix.lower() in {".md", ".markdown"}
+            and not ignored_dirs.intersection(path.relative_to(ROOT).parts)
         )
         self.assertEqual(markdown, ["README.md"])
 

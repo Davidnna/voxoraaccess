@@ -169,7 +169,20 @@ python -m compileall -q app.py tests
 python -m unittest discover -s tests -v
 ```
 
-The GitHub Actions workflow in `.github/workflows/quality.yml` runs those checks and then installs the frontend dependencies and performs a production Vite build on pushes and pull requests targeting `main`. The source regression checks cover critical project conventions, database and preview-delivery contracts, and selected accessibility semantics such as skip navigation, route focus, labelled landmarks, persistent live regions, microphone cleanup, voice heading navigation, reduced-motion handling, focus indicators and document-preview alternatives. These source checks are not a substitute for browser-based WCAG evaluation, database-backed integration tests, or manual testing with NVDA, JAWS, Narrator and mobile screen readers.
+The GitHub Actions workflow in `.github/workflows/quality.yml` runs those checks, builds the production Vite frontend, and then runs a separate Chromium browser suite. The browser suite uses axe-core to check WCAG 2.2 AA and accessibility best-practice rules across public and authentication routes in both signed-in and signed-out states, plus workspace and document routes. It also checks skip-link focus, client-side route focus, persistent voice controls, form labels, document-preview alternatives, element-level horizontal overflow, voice-dock spacing and scroll-control overlap at common viewport widths. Browser-test dependencies are isolated under `tests/browser` and are not part of the production frontend dependencies.
+
+To run the browser suite locally after building the frontend, install its test dependencies and Chromium:
+
+```bash
+npm install --no-audit --no-fund
+npm run build
+cd tests/browser
+npm install --no-audit --no-fund
+npx playwright install chromium
+npm test
+```
+
+Automated browser checks do not establish complete WCAG conformance. They do not replace testing with NVDA, JAWS, Narrator and mobile screen readers, testing real uploaded documents, or evaluation with visually impaired students.
 
 ## Deployment
 

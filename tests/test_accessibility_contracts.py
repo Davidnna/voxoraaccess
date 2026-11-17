@@ -189,13 +189,63 @@ class AccessibilityContractTests(unittest.TestCase):
         self.assertIn('!(isDashboardArea && user) && <nav aria-label="Footer navigation">', self.app)
 
     def test_scroll_to_top_control_is_positioned_above_voice_dock(self):
-        self.assertIn('bottom: calc(8.5rem + env(safe-area-inset-bottom));', self.css)
-        self.assertIn('bottom: calc(10.25rem + env(safe-area-inset-bottom));', self.css)
+        self.assertIn('bottom: calc(var(--voxora-control-dock-height, 7rem) + var(--voxora-control-dock-bottom, 1rem) + 1rem + env(safe-area-inset-bottom));', self.css)
+        self.assertIn('root.style.setProperty("--voxora-control-dock-height", `${height}px`)', self.voice)
 
     def test_upload_file_input_uses_a_wrapping_label_without_unknown_as_attribute(self):
         self.assertIn('<FormField label="Choose a file" name="file" type="file"', self.app)
         self.assertNotIn('<FormField as="input"', self.app)
         self.assertIn('const FormField = ({label,...props}) => <label className="react-field">{label}<input {...props}/></label>;', self.app)
+
+    def test_navigation_and_action_link_targets_meet_wcag_minimum_target_size(self):
+        self.assertIn("#voxora-app-root .react-topbar-actions a {\n    display: inline-flex;\n    align-items: center;\n    min-height: 32px;", self.css)
+        self.assertIn("#voxora-app-root .react-site-footer a {\n    display: inline-flex;\n    align-items: center;\n    min-height: 32px;", self.css)
+        self.assertIn("#voxora-app-root .react-actions a:not(.react-primary-button) {\n    display: inline-flex;\n    align-items: center;\n    min-height: 32px;", self.css)
+        self.assertIn("#voxora-app-root .react-content-card > a:last-child {\n    display: inline-flex;\n    align-items: center;\n    min-height: 32px;", self.css)
+
+    def test_browser_accessibility_suite_is_included_in_ci(self):
+        workflow = (ROOT / ".github" / "workflows" / "quality.yml").read_text(encoding="utf-8")
+        browser_package = (ROOT / "tests" / "browser" / "package.json").read_text(encoding="utf-8")
+        browser_tests = (ROOT / "tests" / "browser" / "accessibility.spec.mjs").read_text(encoding="utf-8")
+        self.assertIn("Install Chromium for browser tests", workflow)
+        self.assertIn("working-directory: tests/browser", workflow)
+        self.assertIn("run: npm test", workflow)
+        self.assertIn("@axe-core/playwright", browser_package)
+        self.assertIn("wcag22aa", browser_tests)
+        self.assertIn('expect(dimensions.overflowingElements', browser_tests)
+        self.assertIn('Scroll-to-top overlaps voice dock', browser_tests)
+        self.assertIn('const signedOutRoutes = [', browser_tests)
+        self.assertIn('for (const routePath of signedOutRoutes)', browser_tests)
+        self.assertIn('"/accessibility"', browser_tests)
+        self.assertIn('"/privacy"', browser_tests)
+
+    def test_browser_fixture_uses_the_production_react_bundle(self):
+        fixture = (ROOT / "tests" / "browser" / "fixture.html").read_text(encoding="utf-8")
+        browser_tests = (ROOT / "tests" / "browser" / "accessibility.spec.mjs").read_text(encoding="utf-8")
+        self.assertIn('/static/dist/app.css', fixture)
+        self.assertIn('/static/dist/app.js', fixture)
+        self.assertIn('page.route("**/api/site?*"', browser_tests)
+        self.assertIn('Voxora controls', browser_tests)
+
+    def test_browser_test_package_is_separate_from_production_dependencies(self):
+        production_package = (ROOT / "package.json").read_text(encoding="utf-8")
+        self.assertNotIn("@playwright/test", production_package)
+        self.assertNotIn("@axe-core/playwright", production_package)
+
+    def test_voice_dock_height_is_measured_and_shared_with_layout(self):
+        self.assertIn('new window.ResizeObserver(updateDockHeight)', self.voice)
+        self.assertIn('root.style.setProperty("--voxora-control-dock-height", `${height}px`)', self.voice)
+        self.assertIn('root.style.removeProperty("--voxora-control-dock-height")', self.voice)
+        self.assertIn('var(--voxora-control-dock-height, 7rem)', self.css)
+        self.assertIn('var(--voxora-control-dock-bottom, 1rem)', self.css)
+        self.assertIn('bottom:calc(var(--voxora-control-dock-bottom, 1rem) + env(safe-area-inset-bottom))', self.css)
+        self.assertIn('bottom:calc(var(--voxora-control-dock-bottom,.45rem) + env(safe-area-inset-bottom))', self.css)
+        self.assertIn(':root{--voxora-control-dock-bottom:.45rem;--voxora-control-dock-height:14rem}', self.css)
+
+    def test_scroll_to_top_and_body_spacing_follow_the_voice_dock_height(self):
+        self.assertIn('bottom: calc(var(--voxora-control-dock-height, 7rem) + var(--voxora-control-dock-bottom, 1rem) + 1rem + env(safe-area-inset-bottom));', self.css)
+        self.assertIn('body{padding-bottom:calc(var(--voxora-control-dock-height, 7rem) + var(--voxora-control-dock-bottom, 1rem) + 1.25rem + env(safe-area-inset-bottom))}', self.css)
+        self.assertNotIn('bottom: calc(10.25rem + env(safe-area-inset-bottom))', self.css)
 
 
 if __name__ == "__main__":

@@ -41,3 +41,15 @@ jobs:
 
       - name: Build production frontend
         run: npm run build
+
+      - name: Install browser accessibility test dependencies
+        run: npm install --no-audit --no-fund
+        working-directory: tests/browser
+
+      - name: Install Chromium for browser tests
+        run: npx playwright install --with-deps chromium
+        working-directory: tests/browser
+
+      - name: Run browser accessibility and responsive tests
+        run: npm test
+        working-directory: tests/browser

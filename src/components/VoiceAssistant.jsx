@@ -967,6 +967,28 @@ export default function VoiceAssistant() {
     }, []);
 
     useEffect(() => {
+        const dock = document.querySelector(".voxora-control-dock");
+        if (!dock) return undefined;
+        const root = document.documentElement;
+        const updateDockHeight = () => {
+            const height = Math.ceil(dock.getBoundingClientRect().height);
+            root.style.setProperty("--voxora-control-dock-height", `${height}px`);
+        };
+        updateDockHeight();
+        let observer = null;
+        if (typeof window.ResizeObserver === "function") {
+            observer = new window.ResizeObserver(updateDockHeight);
+            observer.observe(dock);
+        }
+        window.addEventListener("resize", updateDockHeight, { passive: true });
+        return () => {
+            observer?.disconnect();
+            window.removeEventListener("resize", updateDockHeight);
+            root.style.removeProperty("--voxora-control-dock-height");
+        };
+    }, []);
+
+    useEffect(() => {
         if (!notice || busy || speaking) return undefined;
         const timer = window.setTimeout(() => setNotice(""), 4800);
         return () => window.clearTimeout(timer);
