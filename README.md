@@ -184,3 +184,8 @@ The repository includes a `Dockerfile` and `render.yaml` for deployment. The Ren
 - An embedded PDF preview is not automatically screen-reader accessible. Accessibility depends on the source document's text, structure, tags and reading order; scanned PDFs may require OCR.
 - Resource content and AI search require a signed-in account. Public visibility means visible to signed-in members, not anonymous visitors.
 - The current project is a prototype and has not undergone an independent security, privacy or accessibility audit. Review the privacy and legal pages, hosting configuration, retention practices and applicable requirements before production use.
+
+
+## Startup and health checks
+
+The Render web service listens on `0.0.0.0:$PORT` and exposes `/healthz` as a lightweight HTTP liveness check. Gunicorn uses one worker by default on the Render free instance, with four request threads. PostgreSQL connections use a bounded eight-second connection timeout; startup logs identify schema initialization and connection-pool readiness. Configure `VOXORA_DB_CONNECT_TIMEOUT` only when a different bounded connection timeout is required.

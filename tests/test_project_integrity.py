@@ -214,6 +214,27 @@ class ProjectIntegrityTests(unittest.TestCase):
         self.assertIn("indent_style = space", config)
         self.assertIn("indent_size = 4", config)
 
+    def test_database_connections_have_a_bounded_connect_timeout(self):
+        self.assertIn('connect_timeout=int(os.environ.get("VOXORA_DB_CONNECT_TIMEOUT", "8"))', self.backend)
+        self.assertIn('"connect_timeout": int(os.environ.get("VOXORA_DB_CONNECT_TIMEOUT", "8"))', self.backend)
+
+    def test_database_startup_stages_are_logged(self):
+        self.assertIn('VOXORA_STARTUP stage=schema_init status=starting', self.backend)
+        self.assertIn('VOXORA_STARTUP stage=schema_init status=ready', self.backend)
+        self.assertIn('VOXORA_STARTUP stage=db_pool status=starting', self.backend)
+        self.assertIn('VOXORA_STARTUP stage=db_pool status=ready', self.backend)
+
+    def test_health_endpoint_is_lightweight_and_configured(self):
+        self.assertIn('@app.get("/healthz")', self.backend)
+        self.assertIn('healthCheckPath: /healthz', (ROOT / "render.yaml").read_text(encoding="utf-8"))
+
+    def test_render_worker_count_matches_single_cpu_default(self):
+        dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+        render = (ROOT / "render.yaml").read_text(encoding="utf-8")
+        self.assertIn('--workers ${WEB_CONCURRENCY:-1}', dockerfile)
+        self.assertIn('--workers 1', render)
+        self.assertIn('exec gunicorn', dockerfile)
+
 
 if __name__ == "__main__":
     unittest.main()

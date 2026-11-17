@@ -25,4 +25,4 @@ RUN npm install
 COPY . .
 RUN npm run build
 
-CMD ["sh", "-c", "gunicorn --workers 2 --threads 4 --timeout 120 --bind 0.0.0.0:$PORT app:app"]
+CMD ["sh", "-c", "exec gunicorn --workers ${WEB_CONCURRENCY:-1} --threads 4 --timeout 120 --log-level info --capture-output --bind 0.0.0.0:${PORT:-10000} app:app"]

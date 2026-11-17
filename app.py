@@ -59,7 +59,12 @@ def hybrid_row_factory(cursor):
 
 
 def conn():
-    return pg_connect(DATABASE_URL, sslmode="require", row_factory=hybrid_row_factory)
+    return pg_connect(
+        DATABASE_URL,
+        sslmode="require",
+        connect_timeout=int(os.environ.get("VOXORA_DB_CONNECT_TIMEOUT", "8")),
+        row_factory=hybrid_row_factory,
+    )
 
 
 def now():
@@ -124,14 +129,26 @@ def init():
         c.close()
 
 
-init()
+# Keep schema initialization bounded and observable. Gunicorn imports this module
+# in each worker, so avoid unbounded connection attempts during worker boot.
+print("VOXORA_STARTUP stage=schema_init status=starting", flush=True)
+try:
+    init()
+except Exception:
+    print("VOXORA_STARTUP stage=schema_init status=failed", flush=True)
+    raise
+print("VOXORA_STARTUP stage=schema_init status=ready", flush=True)
 
 # Reuse PostgreSQL connections within each Gunicorn worker instead of opening
 # and closing a fresh TCP/TLS connection for every HTTP request. With two
 # workers and four threads per worker, this pool allows up to eight connections.
 DB_POOL = ConnectionPool(
     conninfo=DATABASE_URL,
-    kwargs={"sslmode": "require", "row_factory": hybrid_row_factory},
+    kwargs={
+        "sslmode": "require",
+        "connect_timeout": int(os.environ.get("VOXORA_DB_CONNECT_TIMEOUT", "8")),
+        "row_factory": hybrid_row_factory,
+    },
     min_size=1,
     max_size=4,
     timeout=10,
@@ -139,7 +156,14 @@ DB_POOL = ConnectionPool(
     max_lifetime=1800,
     open=True,
 )
-DB_POOL.wait(timeout=10)
+print("VOXORA_STARTUP stage=db_pool status=starting", flush=True)
+try:
+    DB_POOL.wait(timeout=10)
+except Exception:
+    print("VOXORA_STARTUP stage=db_pool status=failed", flush=True)
+    DB_POOL.close()
+    raise
+print("VOXORA_STARTUP stage=db_pool status=ready", flush=True)
 
 
 def db():
@@ -332,6 +356,11 @@ def resource(rid):
     if not r:
         abort(404)
     return r
+
+
+@app.get("/healthz")
+def healthz():
+    return jsonify({"status": "ok"}), 200
 
 
 @app.route("/")
