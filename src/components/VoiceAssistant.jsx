@@ -11,6 +11,12 @@ export default function VoiceAssistant() {
     const [busy, setBusy] = useState(false);
     const [notice, setNotice] = useState("");
     const [retrySeconds, setRetrySeconds] = useState(0);
+    const getScrollBehavior = () => (
+        typeof window.matchMedia === "function" &&
+        window.matchMedia("(prefers-reduced-motion: reduce)").matches
+            ? "auto"
+            : "smooth"
+    );
     const rateLimitUntilRef = useRef(0);
     const recognitionRef = useRef(null);
     const activeRef = useRef(false);
@@ -35,7 +41,7 @@ export default function VoiceAssistant() {
     const speakingTextRef = useRef("");
     const requestAbortRef = useRef(null);
     const speechQueueRef = useRef([]);
-    const headingIndexRef = useRef(0);
+    const headingIndexRef = useRef(-1);
     const speechRunRef = useRef(0);
     const micStreamRef = useRef(null);
     const audioContextRef = useRef(null);
@@ -48,7 +54,7 @@ export default function VoiceAssistant() {
     const noiseFloorRef = useRef(0.005);
 
     useEffect(() => { activeRef.current = active; }, [active]);
-    useEffect(() => { headingIndexRef.current = 0; }, [voiceLocation.pathname]);
+    useEffect(() => { headingIndexRef.current = -1; }, [voiceLocation.pathname]);
     useEffect(() => { mutedRef.current = muted; }, [muted]);
 
     useEffect(() => {
@@ -253,7 +259,15 @@ export default function VoiceAssistant() {
                 if (event.error === "not-allowed" || event.error === "service-not-allowed") {
                     activeRef.current = false;
                     setActive(false);
+                    recognitionRef.current?.stop();
+                    releaseAudioMonitor();
                     setNotice("Microphone permission is needed. Select Enable voice and allow microphone access in your browser.");
+                } else if (event.error === "audio-capture") {
+                    activeRef.current = false;
+                    setActive(false);
+                    recognitionRef.current?.stop();
+                    releaseAudioMonitor();
+                    setNotice("The microphone is unavailable. Check that it is connected and not being used exclusively by another application.");
                 } else if (event.error !== "no-speech" && event.error !== "aborted") {
                     setNotice("Voice recognition paused. Select Resume listening to try again.");
                 }
@@ -290,6 +304,10 @@ export default function VoiceAssistant() {
                 : "Listening. Echo cancellation is unavailable, so microphone recognition pauses while Voxora speaks.");
         } catch (error) {
             if (error?.name !== "InvalidStateError") {
+                activeRef.current = false;
+                setActive(false);
+                recognitionRef.current?.stop();
+                releaseAudioMonitor();
                 setNotice("Your browser needs a tap to enable the microphone. Select Enable voice.");
             }
         }
@@ -381,24 +399,23 @@ export default function VoiceAssistant() {
     const handleVoiceInput = async (rawText) => {
         const text = rawText.trim();
         if (!text || busyRef.current) return;
-        if (/^(voxora[,. ]+)?(mute yourself|mute|stop listening)$/i.test(text)) {
+        const command = text.toLowerCase().replace(/[.!?]+$/, "").trim();
+        if (/^(voxora[,. ]+)?(mute yourself|mute)$/i.test(command)) {
             mute();
             return;
         }
-        if (/^(voxora[,. ]+)?(stop speaking|be quiet)$/i.test(text)) {
+        if (/^(voxora[,. ]+)?(stop speaking|be quiet)$/i.test(command)) {
             interruptSpeech();
             resumeListening();
             return;
         }
-        if (/^(voxora[,. ]+)?(stop listening|end voice session)$/i.test(text)) {
+        if (/^(voxora[,. ]+)?(stop listening|end voice session)$/i.test(command)) {
             endSession();
             return;
         }
 
         // Voice-operated navigation stays local to the app unless the user
         // explicitly asks to open an external website.
-        const command = text.toLowerCase().replace(/[.!?]+$/, "").trim();
-
         if (/^(?:please )?(?:read|speak) (?:out )?(?:the )?(?:content of )?(?:this |current )?(?:page|screen|document|resource)(?: to me| aloud)?$|^(read it (to me|aloud)|start reading)$/i.test(command)) {
             const main = document.querySelector("#main-content");
             const documentText = window.voxoraCurrentResourceText || "";
@@ -414,7 +431,7 @@ export default function VoiceAssistant() {
             }
             return;
         }
-        if (/^(stop reading|stop talking|be quiet|stop speaking)$/i.test(command)) {
+        if (/^(stop reading|stop talking)$/i.test(command)) {
             interruptSpeech();
             setNotice("Reading stopped.");
             resumeListening();
@@ -431,11 +448,14 @@ export default function VoiceAssistant() {
                 speak("There are no section headings on this page.");
             } else {
                 const focusedIndex = headings.indexOf(document.activeElement);
-                headingIndexRef.current = Math.min(headings.length - 1, focusedIndex >= 0 ? focusedIndex + 1 : headingIndexRef.current + 1);
+                headingIndexRef.current = Math.min(
+                    headings.length - 1,
+                    focusedIndex >= 0 ? focusedIndex + 1 : Math.max(0, headingIndexRef.current + 1)
+                );
                 const heading = headings[headingIndexRef.current];
-                heading.focus?.();
                 heading.setAttribute("tabindex", "-1");
-                heading.scrollIntoView({ behavior: "smooth", block: "start" });
+                heading.focus({ preventScroll: true });
+                heading.scrollIntoView({ behavior: getScrollBehavior(), block: "start" });
                 speak(heading.innerText || "Next section.");
             }
             return;
@@ -450,7 +470,7 @@ export default function VoiceAssistant() {
                 const heading = headings[headingIndexRef.current];
                 heading.setAttribute("tabindex", "-1");
                 heading.focus();
-                heading.scrollIntoView({ behavior: "smooth", block: "start" });
+                heading.scrollIntoView({ behavior: getScrollBehavior(), block: "start" });
                 speak(heading.innerText || "Previous section.");
             }
             return;
@@ -494,12 +514,12 @@ export default function VoiceAssistant() {
             return;
         }
         if (/^(scroll down|move down)$/i.test(command)) {
-            window.scrollBy({ top: Math.max(400, window.innerHeight * 0.75), behavior: "smooth" });
+            window.scrollBy({ top: Math.max(400, window.innerHeight * 0.75), behavior: getScrollBehavior() });
             setNotice("Scrolling down.");
             return;
         }
         if (/^(scroll up|move up)$/i.test(command)) {
-            window.scrollBy({ top: -Math.max(400, window.innerHeight * 0.75), behavior: "smooth" });
+            window.scrollBy({ top: -Math.max(400, window.innerHeight * 0.75), behavior: getScrollBehavior() });
             setNotice("Scrolling up.");
             return;
         }
@@ -568,7 +588,7 @@ export default function VoiceAssistant() {
                 window.setTimeout(() => {
                     const picker = document.querySelector('input[type="file"]');
                     picker?.focus();
-                    picker?.scrollIntoView({ behavior: "smooth", block: "center" });
+                    picker?.scrollIntoView({ behavior: getScrollBehavior(), block: "center" });
                 }, 700);
             }
             return;
@@ -592,7 +612,7 @@ export default function VoiceAssistant() {
             window.setTimeout(() => {
                 const picker = document.querySelector('input[type="file"]');
                 picker?.focus();
-                picker?.scrollIntoView({ behavior: "smooth", block: "center" });
+                picker?.scrollIntoView({ behavior: getScrollBehavior(), block: "center" });
             }, 700);
             return;
         }
@@ -876,7 +896,7 @@ export default function VoiceAssistant() {
                     result = { success: true, message: (action.checked ? "Checked " : "Unchecked ") + action.label + "." };
                 }
             } else if (action.type === "scroll") {
-                window.scrollBy({ top: action.direction === "up" ? -window.innerHeight * 0.75 : window.innerHeight * 0.75, behavior: "smooth" });
+                window.scrollBy({ top: action.direction === "up" ? -window.innerHeight * 0.75 : window.innerHeight * 0.75, behavior: getScrollBehavior() });
                 result = { success: true, message: "Scrolled the page " + action.direction + "." };
             } else if (action.type === "focus_upload") {
                 const started = Date.now();
@@ -887,7 +907,7 @@ export default function VoiceAssistant() {
                 }
                 if (picker) {
                     picker.focus();
-                    picker.scrollIntoView({ behavior: "smooth", block: "center" });
+                    picker.scrollIntoView({ behavior: getScrollBehavior(), block: "center" });
                     result = { success: true, message: "The upload control is ready. Select the file in your browser to continue." };
                 } else {
                     result = { success: false, message: "I could not find the upload control on this page." };
@@ -953,11 +973,13 @@ export default function VoiceAssistant() {
     }, [notice, busy, speaking]);
 
     return <>
-    {notice && <div className={"voxora-assistant-notice" + (busy ? " is-busy" : speaking ? " is-speaking" : "")} role="status" aria-live="polite">
-        <span className="voxora-assistant-notice-dot" aria-hidden="true"/>
-        <span>{notice}</span>
-        <button type="button" aria-label="Dismiss Voxora notification" onClick={() => setNotice("")}>×</button>
-    </div>}
+    <div className={"voxora-assistant-notice" + (!notice ? " is-empty" : busy ? " is-busy" : speaking ? " is-speaking" : "")} role="status" aria-live="polite" aria-atomic="true">
+        {notice && <>
+            <span className="voxora-assistant-notice-dot" aria-hidden="true"/>
+            <span>{notice}</span>
+            <button type="button" aria-label="Dismiss Voxora notification" onClick={() => setNotice("")}>×</button>
+        </>}
+    </div>
     <div className="voxora-control-dock" role="region" aria-label="Voxora controls">
         <div className="voxora-control-status" role="status" aria-live="polite" aria-atomic="true">
             <span className={"voxora-control-indicator" + (active && !muted ? " is-active" : "")} aria-hidden="true"/>

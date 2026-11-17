@@ -927,7 +927,7 @@ body {
     position: fixed;
     z-index: 40;
     right: max(18px, env(safe-area-inset-right));
-    bottom: max(18px, env(safe-area-inset-bottom));
+    bottom: calc(8.5rem + env(safe-area-inset-bottom));
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -1097,6 +1097,7 @@ body {
     #voxora-app-root .react-workspace-footer nav { justify-content: flex-start; }
 }
 @media (max-width: 640px) {
+    #voxora-app-root .react-scroll-top { bottom: calc(10.25rem + env(safe-area-inset-bottom)); }
     #voxora-app-root .react-topbar { align-items: flex-start; }
     #voxora-app-root .react-workspace-topbar { display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 12px; }
     #voxora-app-root .react-workspace-actions { flex-wrap: wrap; gap: 8px; }
@@ -1198,6 +1199,25 @@ body {
 .voxora-assistant-notice button:focus-visible{outline:3px solid #075e58;outline-offset:3px}
 @media(max-width:640px){
     .voxora-assistant-notice{top:.5rem;width:calc(100vw - 1rem);padding:.7rem .8rem;font-size:.82rem}
+}
+
+/* Keep the polite live region mounted before notifications are inserted. */
+.voxora-assistant-notice.is-empty{
+    position:absolute !important;
+    top:auto !important;
+    left:auto !important;
+    transform:none !important;
+    background:transparent !important;
+    box-shadow:none !important;
+    width:1px !important;
+    height:1px !important;
+    padding:0 !important;
+    margin:-1px !important;
+    overflow:hidden !important;
+    clip:rect(0,0,0,0) !important;
+    clip-path:inset(50%) !important;
+    white-space:nowrap !important;
+    border:0 !important;
 }
 
 /* Persistent, always-visible Voxora controls */
