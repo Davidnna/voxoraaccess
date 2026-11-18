@@ -24,7 +24,9 @@
             email: "student@example.test"
         };
         window.voxoraFlashMessages = [];
-        window.localStorage.setItem("voxora-welcomed-v1", "1");
+        if (typeof window.voxoraWelcomeEnabled === "undefined") {
+            window.voxoraWelcomeEnabled = fixtureParams.get("welcome") === "1";
+        }
     </script>
     <script type="module" src="/static/dist/app.js"></script>
 </body>

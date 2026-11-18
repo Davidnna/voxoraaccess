@@ -71,6 +71,7 @@ class AccessibilityContractTests(unittest.TestCase):
         self.assertIn('role="region" tabIndex={0} aria-label={`Scrollable table:', self.app)
         self.assertIn('<ul>', self.app)
         self.assertIn('path.endsWith("/read")&&data.resource', self.app)
+        self.assertIn("Refresh accessible text", self.app)
 
     def test_reader_controls_are_labelled_and_use_voxora_speech(self):
         self.assertIn('label htmlFor="reader-text-size">Text size</label>', self.app)
@@ -79,8 +80,9 @@ class AccessibilityContractTests(unittest.TestCase):
         self.assertIn('new Event("voxora:stop-reading")', self.app)
         self.assertIn('window.addEventListener("voxora:read-document", readDocument)', self.voice)
         self.assertIn('window.addEventListener("voxora:stop-reading", stopDocument)', self.voice)
-        self.assertIn('This browser does not support speech output', self.voice)
-        self.assertIn('Speech output is muted', self.voice)
+        self.assertIn('This browser does not support Voxora voice playback', self.voice)
+        self.assertIn('Microphone mute affects input only. It must never disable speaker output.', self.voice)
+        self.assertNotIn('Speech output is muted', self.voice)
 
     def test_reader_uses_full_extracted_text_without_duplicate_page_text(self):
         self.assertIn('cached.resource?.reading_text || cached.resource?.text_excerpt', self.app)
@@ -88,7 +90,8 @@ class AccessibilityContractTests(unittest.TestCase):
         self.assertIn('const readerContent = main?.querySelector(".react-document-reading-content")?.innerText || ""', self.voice)
         self.assertIn('const readerStatus = main?.querySelector(".react-extraction-status")?.innerText || ""', self.voice)
         self.assertIn('(readerContent || main?.innerText || document.body.innerText || documentText).trim()', self.voice)
-        self.assertIn('const maxReadCharacters = 40000', self.voice)
+        self.assertIn('const limited = Boolean(window.voxoraCurrentResourceTruncated)', self.voice)
+        self.assertIn('speak(prefix + pageText)', self.voice)
 
     def test_document_preview_has_named_frame_and_new_tab_alternative(self):
         self.assertIn('className="react-document-frame"', self.app)
@@ -135,8 +138,8 @@ class AccessibilityContractTests(unittest.TestCase):
 
     def test_voice_controls_have_accessible_names_and_toggle_state(self):
         self.assertIn('role="region" aria-label="Voxora controls"', self.voice)
-        self.assertIn('aria-pressed={muted}', self.voice)
-        self.assertIn('>Mute microphone</button>', self.voice)
+        self.assertIn('aria-pressed={Boolean(active && !muted)}', self.voice)
+        self.assertIn('{muted ? "Unmute microphone" : active ? "Mute microphone" : "Enable microphone"}', self.voice)
         self.assertIn('> Stop speaking</button>', self.voice)
         self.assertIn('> {active ? "Pause access" : "Resume access"}</button>', self.voice)
         self.assertIn('<span aria-hidden="true">🎙</span>', self.voice)
@@ -268,10 +271,51 @@ class AccessibilityContractTests(unittest.TestCase):
         self.assertIn('bottom:calc(var(--voxora-control-dock-bottom,.45rem) + env(safe-area-inset-bottom))', self.css)
         self.assertIn(':root{--voxora-control-dock-bottom:.45rem;--voxora-control-dock-height:14rem}', self.css)
 
-    def test_scroll_to_top_and_body_spacing_follow_the_voice_dock_height(self):
+    def test_scroll_to_top_and_footer_spacing_follow_the_voice_dock_height(self):
         self.assertIn('bottom: calc(var(--voxora-control-dock-height, 7rem) + var(--voxora-control-dock-bottom, 1rem) + 1rem + env(safe-area-inset-bottom));', self.css)
-        self.assertIn('body{padding-bottom:calc(var(--voxora-control-dock-height, 7rem) + var(--voxora-control-dock-bottom, 1rem) + 1.25rem + env(safe-area-inset-bottom))}', self.css)
+        self.assertIn('body{padding-bottom:0}', self.css)
+        self.assertIn('#voxora-app-root .react-site-footer{', self.css)
+        self.assertIn("#voxora-app-root .react-site-footer{padding-bottom:24px}", self.css)
+        self.assertNotIn("padding-bottom:calc(24px + var(--voxora-control-dock-height", self.css)
+        self.assertIn(".voxora-control-dock.is-footer-visible:not(.is-expanded)", self.css)
+        self.assertIn("className=\"voxora-footer-toggle\"", self.voice)
+        self.assertNotIn('body{padding-bottom:calc', self.css)
         self.assertNotIn('bottom: calc(10.25rem + env(safe-area-inset-bottom))', self.css)
+
+    def test_speech_status_tracks_browser_playback_and_reports_failures(self):
+        self.assertIn('utterance.onstart = () => {', self.voice)
+        self.assertIn('setNotice("Voxora is speaking. If you cannot hear audio, check your device media volume or use Test speaker.")', self.voice)
+        self.assertIn('utterance.onerror = (event) => {', self.voice)
+        self.assertIn('fail(event?.error || "speech error")', self.voice)
+        self.assertIn('speechWatchdogRef.current = window.setTimeout', self.voice)
+        self.assertIn("Preparing Voxora's spoken response…", self.voice)
+
+    def test_welcome_is_retried_after_autoplay_block_and_replays_on_new_page_load(self):
+        self.assertNotIn('WELCOME_SESSION_KEY', self.voice)
+        self.assertNotIn('sessionStorage.getItem("voxora-welcomed-session-v1")', self.voice)
+        self.assertIn('const welcomeEnabled = window.voxoraWelcomeEnabled !== false', self.voice)
+        self.assertIn('setWelcomeAvailable(true)', self.voice)
+        self.assertIn('className="voxora-welcome-button"', self.voice)
+        self.assertIn('retryPendingSpeechFromGesture', self.voice)
+        self.assertIn('welcomePendingRef.current = true', self.voice)
+        self.assertIn('setWelcomeAvailable(false)', self.voice)
+
+    def test_document_reading_uses_all_extracted_text_instead_of_a_40k_prefix(self):
+        self.assertNotIn("const maxReadCharacters = 40000", self.voice)
+        self.assertNotIn("read-aloud currently reads up to the first 40,000", self.app)
+        self.assertIn("+ text);", self.voice)
+
+    def test_microphone_mute_is_independent_of_speech_output(self):
+        speak_block = self.voice.split('const speak = (text, options = {}) => {', 1)[1].split('speakRef.current = speak;', 1)[0]
+        mute_block = self.voice.split('const mute = () => {', 1)[1].split('const endSession', 1)[0]
+        self.assertNotIn('mutedRef.current', speak_block)
+        self.assertNotIn('interruptSpeech()', mute_block)
+        self.assertIn('Voxora can still speak', mute_block)
+
+    def test_microphone_permission_is_requested_only_after_a_user_action(self):
+        self.assertNotIn('setTimeout(() => startListening(), 500)', self.voice)
+        self.assertIn('permission?.state === "granted"', self.voice)
+        self.assertIn('onClick={startListening}', self.voice)
 
 
 if __name__ == "__main__":

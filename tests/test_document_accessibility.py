@@ -5,6 +5,8 @@ import unittest
 from unittest.mock import patch
 
 from docx import Document
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
 from pptx import Presentation
 from pptx.util import Inches
 from PIL import Image
@@ -73,16 +75,16 @@ class DocumentAccessibilityTests(unittest.TestCase):
         self.assertEqual(result["blocks"][0]["level"], 2)
         self.assertEqual(result["blocks"][-1]["rows"][1], ["Ada", "10"])
 
-    def test_csv_is_exposed_as_a_semantic_table(self):
+    def test_csv_does_not_assume_the_first_row_is_a_header(self):
         result = documents.extract_document(
             b"Student,Score\nAda,10\nGrace,9", "scores.csv", "csv"
         )
         self.assertEqual(result["status"], "partial")
         self.assertEqual(result["method"], "csv")
-        self.assertTrue(any("first CSV row" in warning for warning in result["warnings"]))
+        self.assertTrue(any("do not reliably identify" in warning for warning in result["warnings"]))
         table = result["blocks"][0]
         self.assertEqual(table["type"], "table")
-        self.assertEqual(table["header_rows"], 1)
+        self.assertEqual(table["header_rows"], 0)
         self.assertEqual(table["rows"][0], ["Student", "Score"])
 
     def test_docx_preserves_heading_paragraph_and_table_order(self):
@@ -107,7 +109,38 @@ class DocumentAccessibilityTests(unittest.TestCase):
         ])
         self.assertEqual(result["blocks"][1]["level"], 3)
         self.assertEqual(result["status"], "partial")
-        self.assertTrue(any("header row" in warning for warning in result["warnings"]))
+        self.assertEqual(result["blocks"][-1]["header_rows"], 0)
+        self.assertTrue(any("does not infer column headings" in warning for warning in result["warnings"]))
+
+    def test_docx_reports_merged_table_cells(self):
+        document = Document()
+        table = document.add_table(rows=2, cols=2)
+        table.cell(0, 0).merge(table.cell(0, 1)).text = "Merged heading"
+        table.cell(1, 0).text = "First value"
+        table.cell(1, 1).text = "Second value"
+        buffer = io.BytesIO()
+        document.save(buffer)
+
+        result = documents.extract_document(buffer.getvalue(), "merged.docx", "docx")
+        self.assertTrue(any("contains merged cells" in warning for warning in result["warnings"]))
+
+    def test_docx_preserves_only_an_explicitly_marked_header_row(self):
+        document = Document()
+        table = document.add_table(rows=2, cols=2)
+        table.cell(0, 0).text = "Outcome"
+        table.cell(0, 1).text = "Status"
+        table.cell(1, 0).text = "Reading"
+        table.cell(1, 1).text = "Complete"
+        header_properties = table.rows[0]._tr.get_or_add_trPr()
+        header_marker = OxmlElement("w:tblHeader")
+        header_marker.set(qn("w:val"), "true")
+        header_properties.append(header_marker)
+        buffer = io.BytesIO()
+        document.save(buffer)
+
+        result = documents.extract_document(buffer.getvalue(), "marked.docx", "docx")
+        table_block = next(block for block in result["blocks"] if block["type"] == "table")
+        self.assertEqual(table_block["header_rows"], 1)
 
     def test_docx_reports_images_without_alternative_text(self):
         image = Image.new("RGB", (12, 12), "white")
@@ -155,7 +188,9 @@ class DocumentAccessibilityTests(unittest.TestCase):
         self.assertEqual(result["page_count"], 1)
         self.assertIn("Introduction", result["text"])
         self.assertIn("A key concept from the lecture.", result["text"])
-        self.assertTrue(any(block["type"] == "table" for block in result["blocks"]))
+        table_block = next(block for block in result["blocks"] if block["type"] == "table")
+        self.assertEqual(table_block["header_rows"], 0)
+        self.assertTrue(any("does not expose reliable semantic header metadata" in warning for warning in result["warnings"]))
 
     def test_pptx_image_alternative_text_is_preserved(self):
         image = Image.new("RGB", (12, 12), "white")

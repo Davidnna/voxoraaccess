@@ -37,9 +37,16 @@ const signedOutRoutes = [
     "/signin", "/register",
 ];
 
-async function preparePage(page, routePath = "/", signedOut = false) {
-    await page.addInitScript(() => {
-        localStorage.setItem("voxora-welcomed-v1", "1");
+async function expandVoiceDock(page) {
+    const controls = page.getByRole("region", { name: "Voxora controls" });
+    const expand = controls.getByRole("button", { name: "Voxora controls" });
+    if (await expand.count()) await expand.click();
+    return controls;
+}
+
+async function preparePage(page, routePath = "/", signedOut = false, options = {}) {
+    await page.addInitScript(({ speechBehavior, welcome }) => {
+        window.voxoraWelcomeEnabled = Boolean(welcome);
         class TestSpeechRecognition {
             start() { this.started = true; }
             stop() {
@@ -50,12 +57,29 @@ async function preparePage(page, routePath = "/", signedOut = false) {
         window.SpeechRecognition = TestSpeechRecognition;
         window.webkitSpeechRecognition = TestSpeechRecognition;
         window.__voxoraSpeechOutput = [];
+        window.__voxoraSpeechCallCount = 0;
+        window.__voxoraSpeechBehavior = speechBehavior || "success";
         window.SpeechSynthesisUtterance = class {
             constructor(text) { this.text = text; }
         };
         window.speechSynthesis = {
             cancel() {},
-            speak(utterance) { window.__voxoraSpeechOutput.push(utterance.text); },
+            resume() {},
+            getVoices() { return [{ name: "Test English", lang: "en-US", default: true }]; },
+            speak(utterance) {
+                window.__voxoraSpeechOutput.push(utterance.text);
+                window.__voxoraSpeechCallCount += 1;
+                const callNumber = window.__voxoraSpeechCallCount;
+                const behavior = window.__voxoraSpeechBehavior;
+                window.setTimeout(() => {
+                    if (behavior === "blocked" || (behavior === "blocked-once" && callNumber === 1)) {
+                        utterance.onerror?.({ error: "not-allowed" });
+                        return;
+                    }
+                    utterance.onstart?.();
+                    window.setTimeout(() => utterance.onend?.(), 40);
+                }, 0);
+            },
         };
         try {
             Object.defineProperty(navigator, "mediaDevices", {
@@ -67,7 +91,7 @@ async function preparePage(page, routePath = "/", signedOut = false) {
                 },
             });
         } catch (_) {}
-    });
+    }, { speechBehavior: options.speechBehavior || "success", welcome: Boolean(options.welcome) });
 
     await page.route("**/api/site?*", async (route) => {
         const url = new URL(route.request().url());
@@ -111,7 +135,7 @@ async function preparePage(page, routePath = "/", signedOut = false) {
                     { type: "list_item", ordered: false, text: "Second point" },
                     { type: "table", caption: "Key terms", header_rows: 1, rows: [["Term", "Meaning"], ["Access", "Ability to use information"]] },
                 ] : [],
-                extraction_status: "partial",
+                extraction_status: options.extractionStatus || "partial",
                 extraction_method: "pypdf+ocr",
                 extraction_warnings: ["The source PDF tag order has not been independently verified."],
                 extraction_truncated: false,
@@ -140,7 +164,8 @@ async function preparePage(page, routePath = "/", signedOut = false) {
     });
 
     const signedOutParam = signedOut ? "&signedOut=1" : "";
-    await page.goto(`/tests/browser/fixture.html?route=${encodeURIComponent(routePath)}${signedOutParam}`);
+    const welcomeParam = options.welcome ? "&welcome=1" : "";
+    await page.goto(`/tests/browser/fixture.html?route=${encodeURIComponent(routePath)}${signedOutParam}${welcomeParam}`);
     await expect(page.locator("#main-content h1")).toBeVisible();
     await expect(page.locator("#main-content")).toHaveAttribute("aria-busy", "false");
 }
@@ -201,19 +226,89 @@ test.describe("Voxora browser accessibility", () => {
 
     test("voice controls remain named, visible and stateful", async ({ page }) => {
         await preparePage(page, "/about");
-        const controls = page.getByRole("region", { name: "Voxora controls" });
+        const controls = await expandVoiceDock(page);
         await expect(controls).toBeVisible();
-        const mute = controls.getByRole("button", { name: "Mute microphone" });
+        const enable = controls.getByRole("button", { name: "Enable microphone" });
         const stop = controls.getByRole("button", { name: "Stop speaking" });
-        const pause = controls.getByRole("button", { name: "Pause access" });
-        await expect(mute).toBeVisible();
+        await expect(enable).toBeVisible();
         await expect(stop).toBeVisible();
-        await expect(pause).toBeVisible();
-        await mute.click();
+        await enable.click();
+        const mute = controls.getByRole("button", { name: "Mute microphone" });
         await expect(mute).toHaveAttribute("aria-pressed", "true");
-        await pause.click();
-        await expect(controls.getByRole("button", { name: "Resume access" })).toBeVisible();
-        await expect(controls.getByRole("status")).toContainText("Voice access paused");
+        await mute.click();
+        const unmute = controls.getByRole("button", { name: "Unmute microphone" });
+        await expect(unmute).toHaveAttribute("aria-pressed", "false");
+        await unmute.click();
+        await expect(controls.getByRole("button", { name: "Mute microphone" })).toHaveAttribute("aria-pressed", "true");
+        await expect(controls.getByRole("button", { name: "Pause access" })).toBeVisible();
+    });
+
+    test("speaker test is available as a direct user-gesture playback check", async ({ page }) => {
+        await preparePage(page, "/about");
+        const controls = await expandVoiceDock(page);
+        await controls.getByRole("button", { name: "Test speaker" }).click();
+        await page.waitForFunction(() => window.__voxoraSpeechOutput.some(text => text.includes("Voxora speaker test")));
+        await expect(controls.getByRole("button", { name: "Test speaker" })).toBeVisible();
+    });
+
+    test("welcome retries after the browser blocks automatic speech until a user gesture", async ({ page }) => {
+        await preparePage(page, "/", false, { welcome: true, speechBehavior: "blocked-once" });
+        await page.waitForFunction(() => window.__voxoraSpeechCallCount === 1);
+        await expect(page.getByRole("status").filter({ hasText: "Voxora could not start the welcome audio automatically" })).toBeVisible();
+        await expect(page.getByRole("region", { name: "Voxora controls" }).getByRole("status")).not.toContainText("Speaking");
+        await page.locator("#main-content h1").click();
+        await expect(page.getByRole("button", { name: "Play welcome" })).toHaveCount(0);
+        const spoken = await page.evaluate(() => window.__voxoraSpeechOutput);
+        expect(spoken).toHaveLength(2);
+        expect(spoken[0]).toContain("Hello, welcome to Voxora Access");
+        expect(spoken[1]).toContain("Hello, welcome to Voxora Access");
+    });
+
+    test("compact footer dock offers Play welcome when autoplay is blocked", async ({ page }) => {
+        await preparePage(page, "/about", false, { welcome: true, speechBehavior: "blocked-once" });
+        await page.waitForFunction(() => window.__voxoraSpeechCallCount === 1);
+        await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+        const playWelcome = page.getByRole("button", { name: "Play welcome" });
+        await expect(playWelcome).toBeVisible();
+        await playWelcome.click();
+        await page.waitForFunction(() => window.__voxoraSpeechCallCount === 2);
+        await expect(page.getByRole("button", { name: "Collapse controls" })).toBeVisible();
+    });
+
+    test("welcome is attempted again after a full site reload in the same tab", async ({ page }) => {
+        await preparePage(page, "/", false, { welcome: true });
+        await page.waitForFunction(() => window.__voxoraSpeechOutput.some(text => text.includes("Hello, welcome to Voxora Access")));
+        await expect(page.getByRole("button", { name: "Play welcome" })).toHaveCount(0);
+        await page.reload();
+        await page.waitForFunction(() => window.__voxoraSpeechOutput.some(text => text.includes("Hello, welcome to Voxora Access")));
+    });
+
+    test("microphone mute does not silence Voxora's spoken document output", async ({ page }) => {
+        await preparePage(page, "/resource/41/read");
+        const controls = await expandVoiceDock(page);
+        await controls.getByRole("button", { name: "Enable microphone" }).click();
+        await controls.getByRole("button", { name: "Mute microphone" }).click();
+        await expect(controls.getByRole("button", { name: "Unmute microphone" })).toHaveAttribute("aria-pressed", "false");
+        await page.getByRole("button", { name: "Read aloud with Voxora" }).click();
+        await page.waitForFunction(() => window.__voxoraSpeechOutput.some(text => text.includes("A sample passage for assistive reading")));
+        const spoken = await page.evaluate(() => window.__voxoraSpeechOutput.join(" "));
+        expect(spoken).toContain("A sample passage for assistive reading");
+    });
+
+    test("footer has no trailing body spacer and the dock collapses at the footer", async ({ page }) => {
+        await preparePage(page, "/about");
+        await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+        await expect(page.locator(".voxora-control-dock")).toHaveClass(/is-footer-visible/);
+        await expect(page.getByRole("button", { name: "Voxora controls" })).toBeVisible();
+        await page.getByRole("button", { name: "Voxora controls" }).click();
+        await expect(page.getByRole("button", { name: "Collapse controls" })).toBeVisible();
+        const metrics = await page.evaluate(() => ({
+            bodyPadding: getComputedStyle(document.body).paddingBottom,
+            footerBottom: document.querySelector(".react-site-footer").getBoundingClientRect().bottom + window.scrollY,
+            documentHeight: document.documentElement.scrollHeight,
+        }));
+        expect(metrics.bodyPadding).toBe("0px");
+        expect(Math.abs(metrics.documentHeight - metrics.footerBottom)).toBeLessThanOrEqual(2);
     });
 
     test("document preview has a title and a non-embedded alternative", async ({ page }) => {
@@ -262,6 +357,11 @@ test.describe("Voxora browser accessibility", () => {
             document: document.documentElement.scrollWidth,
         }));
         expect(dimensions.document, JSON.stringify(dimensions)).toBeLessThanOrEqual(dimensions.viewport + 1);
+    });
+
+    test("resource owner can refresh accessible text for an already processed document", async ({ page }) => {
+        await preparePage(page, "/resource/41", false, { extractionStatus: "ready" });
+        await expect(page.getByRole("button", { name: "Refresh accessible text" })).toBeVisible();
     });
 
     test("resource owner can retry accessible text extraction", async ({ page }) => {
@@ -327,7 +427,7 @@ test.describe("Voxora browser accessibility", () => {
                 dockBottom: parseFloat(getComputedStyle(document.querySelector(".voxora-control-dock")).bottom),
                 bodyPadding: parseFloat(getComputedStyle(document.body).paddingBottom),
             }));
-            expect(spacing.bodyPadding).toBeGreaterThanOrEqual(spacing.dockHeight + spacing.dockBottom + 16);
+            expect(spacing.bodyPadding).toBe(0);
             await expect(page.getByRole("region", { name: "Voxora controls" })).toBeVisible();
         });
     }

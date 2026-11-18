@@ -20,10 +20,11 @@ Voxora Access is a voice-first digital accessibility and learning-resource platf
 - Supports PDF, DOCX, PPTX, TXT, MD, RTF, CSV, ODT, ODS and ODP uploads.
 - Converts DOCX and PPTX uploads to PDF previews with LibreOffice when conversion is available; the original file remains available for download.
 - Provides embedded previews for PDF, DOCX/PPTX-converted PDF, TXT, MD and CSV resources when the required preview data is available.
-- Provides embedded previews for supported formats. The current upload pipeline does not populate extracted document text, so resource search is based on titles and descriptions; AI explanations of document contents depend on text made available through the current page or document viewer.
 - Includes resource discovery, a personal library, private sharing between existing accounts, and public/private visibility settings.
 - Extracts structured reading content from PDF, DOCX, PPTX, TXT, Markdown and CSV uploads. Scanned PDF pages can use local Tesseract OCR when the server's OCR engine and language data are installed.
-- Provides a text-first document reading view with semantic headings, lists and tables, adjustable text size, and a read-aloud control that uses Voxora's speech output.
+- Provides a text-first document reading view with semantic headings, lists and tables, adjustable text size, and read-aloud support for all extracted text (up to the configured extraction limit), split into short speech segments. Resource owners can refresh the extracted reading structure for existing uploads after processing improvements.
+- Preserves table header semantics only when the source format provides explicit evidence. DOCX repeat-header metadata is retained; CSV and PowerPoint tables are not assigned an assumed first-row header.
+- Warns when text boxes, charts, diagrams, merged table cells, slide reading order, speaker notes or other embedded content may be missing from the extracted reading view.
 
 ### Accounts and resource permissions
 
@@ -162,7 +163,7 @@ flask --app app run --host 127.0.0.1 --port 5000
 
 Open [http://127.0.0.1:5000](http://127.0.0.1:5000) in a browser. The application creates its database tables when the Flask application starts.
 
-Use localhost for microphone testing. The browser will ask for microphone permission before voice input can begin. Speech recognition support differs between browsers; use a current browser with Web Speech API support for the best experience.
+Use localhost for microphone testing. On page load, Voxora checks whether microphone permission is already granted and resumes hands-free listening only in that case. If permission is not already granted, it waits for the user to select **Enable / Resume** before requesting access. Speech recognition support differs between browsers; use a current browser with Web Speech API support for the best experience. The welcome is attempted on each full page load. Browsers may block automatic speech; when that happens, **Play welcome** remains available in the voice dock (including its compact footer control), and a page interaction can retry it. The **Test speaker** control plays a short tone through Web Audio and then a spoken phrase so device output and speech synthesis can be checked separately.
 
 ## AI usage and rate limits
 
@@ -177,7 +178,7 @@ python -m compileall -q app.py document_accessibility.py tests
 python -m unittest discover -s tests -v
 ```
 
-The GitHub Actions workflow in `.github/workflows/quality.yml` runs those checks, builds the production Vite frontend, and then runs a separate Chromium browser suite. The browser suite uses axe-core to check WCAG 2.2 AA and accessibility best-practice rules across public and authentication routes in both signed-in and signed-out states, plus workspace and document routes. It also checks skip-link focus, client-side route focus, persistent voice controls, form labels, document-preview alternatives, semantic document reading blocks, read-aloud/stop controls, element-level horizontal overflow, voice-dock spacing and scroll-control overlap at common viewport widths. Document extraction unit tests cover PDF, DOCX, PPTX, text, Markdown, CSV, RTF/OpenDocument conversion, image-description warnings, extraction limits and OCR fallback behavior. Browser-test dependencies are isolated under `tests/browser` and are not part of the production frontend dependencies.
+The GitHub Actions workflow in `.github/workflows/quality.yml` runs those checks, builds the production Vite frontend, and then runs a separate Chromium browser suite. The browser suite uses axe-core to check WCAG 2.2 AA and accessibility best-practice rules across public and authentication routes in both signed-in and signed-out states, plus workspace and document routes. It also checks skip-link focus, client-side route focus, persistent voice controls, form labels, document-preview alternatives, semantic document reading blocks, read-aloud/stop controls, element-level horizontal overflow, voice-dock spacing, compact footer mode and scroll-control overlap at common viewport widths. Document extraction unit tests cover PDF, DOCX, PPTX, text, Markdown, CSV, RTF/OpenDocument conversion, image-description warnings, extraction limits and OCR fallback behavior. Browser-test dependencies are isolated under `tests/browser` and are not part of the production frontend dependencies.
 
 To run the browser suite locally after building the frontend, install its test dependencies and Chromium:
 
@@ -198,15 +199,15 @@ The repository includes a `Dockerfile` and `render.yaml` for deployment. The Ren
 
 ## Current limitations
 
-- Browser speech recognition and speech synthesis vary by browser, device and operating system. Voice interruption and echo handling depend on the audio capabilities exposed by the browser and hardware.
+- Browser speech recognition and speech synthesis vary by browser, device and operating system. Voxora reports speaking after the browser fires the speech-start event, but that event cannot prove that the device physically emitted audible sound. The **Test speaker** control checks the output path with a short tone and then checks browser speech synthesis. If automatic welcome audio is blocked, **Play welcome** remains available for a user-initiated retry. Microphone mute affects input only; it does not silence Voxora's spoken output. Voice interruption and echo handling depend on the audio capabilities exposed by the browser and hardware.
 - A browser cannot silently browse a student's computer or choose a local file. Voxora can open or focus the upload control, but the student must select the file in the native file picker.
 - Voxora does not fill password fields. Students enter their own credentials directly.
 - DOCX/PPTX conversion depends on LibreOffice and may not preserve every complex layout, font, animation or embedded object. The original upload remains available if conversion fails.
 - An embedded PDF preview is not automatically screen-reader accessible. The text-first reading view is an alternative generated from extracted content; it does not add tags to, repair or certify the original PDF.
 - OCR can misrecognise characters and cannot reliably reconstruct complex reading order, mathematics, charts, diagrams or image descriptions. Verify OCR output against the original. The server limits OCR to a configurable number of sparse pages per document.
-- Voxora read-aloud currently reads up to the first 40,000 characters per request. The full extracted text remains available in the reading view for screen-reader and keyboard navigation, subject to the 200,000-character extraction limit.
+- Voxora read-aloud processes all text available in the extracted reading view, subject to the configured 200,000-character extraction limit. Long text is split at word boundaries into smaller speech segments. Source documents may still contain material that extraction did not capture.
 - DOCX and PPTX extraction preserves common headings, paragraphs, lists and tables, but some embedded objects, SmartArt, charts, equations, comments, tracked changes, speaker notes and complex layout may not be represented. RTF and OpenDocument formats are converted through LibreOffice PDF previews, so semantic structure may be flattened.
-- Existing uploads created before document extraction was introduced are marked as pending. The resource owner can use **Prepare / retry accessible text** on the resource page to process them.
+- Existing uploads created before document extraction was introduced are marked as pending. The resource owner can use **Prepare / retry accessible text** or **Refresh accessible text** on the resource page to process them.
 - Resource content and AI search require a signed-in account. Public visibility means visible to signed-in members, not anonymous visitors.
 - The current project is a prototype and has not undergone an independent security, privacy or accessibility audit. Review the privacy and legal pages, hosting configuration, retention practices and applicable requirements before production use.
 

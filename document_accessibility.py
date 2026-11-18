@@ -47,7 +47,7 @@ def _paragraph_blocks(text: str) -> list[dict[str, Any]]:
     return blocks
 
 
-def _table_block(rows: list[list[str]], caption: str, header_rows: int = 1) -> dict[str, Any] | None:
+def _table_block(rows: list[list[str]], caption: str, header_rows: int = 0) -> dict[str, Any] | None:
     rows_truncated = len(rows) > MAX_TABLE_ROWS
     columns_truncated = any(len(row) > MAX_TABLE_COLUMNS for row in rows)
     clean_rows = []
@@ -63,7 +63,7 @@ def _table_block(rows: list[list[str]], caption: str, header_rows: int = 1) -> d
         "type": "table",
         "caption": _clean_text(caption),
         "rows": clean_rows,
-        "header_rows": 1 if header_rows else 0,
+        "header_rows": max(0, min(1, int(header_rows or 0))),
         "truncated_rows": rows_truncated,
         "truncated_columns": columns_truncated,
     }
@@ -155,11 +155,11 @@ def _csv_blocks(text: str) -> tuple[list[dict[str, Any]], list[str]]:
     if len(rows) > MAX_TABLE_ROWS:
         rows = rows[:MAX_TABLE_ROWS]
         warnings.append(f"Only the first {MAX_TABLE_ROWS} rows are available in the accessible table.")
-    warnings.append("The first CSV row is presented as the table header. Confirm that it contains column names rather than data.")
+    warnings.append("CSV files do not reliably identify whether the first row contains column headings. Voxora preserves every row as data rather than assuming header semantics; verify the original file before relying on column relationships.")
     if any(len(row) > MAX_TABLE_COLUMNS for row in rows):
         rows = [row[:MAX_TABLE_COLUMNS] for row in rows]
         warnings.append(f"Only the first {MAX_TABLE_COLUMNS} columns are available in the accessible table.")
-    table = _table_block(rows, "CSV data", header_rows=1)
+    table = _table_block(rows, "CSV data", header_rows=0)
     return ([table] if table else []), warnings
 
 
@@ -205,13 +205,14 @@ def _docx_blocks(file_data: bytes) -> tuple[list[dict[str, Any]], list[str], int
             table_index += 1
             table = Table(child, document)
             rows = [[cell.text for cell in row.cells] for row in table.rows]
+            if table._tbl.xpath(".//w:gridSpan | .//w:vMerge"):
+                warnings.append(f"Table {table_index} contains merged cells. Voxora's text view may not preserve the original row and column relationships; verify the table in the source document.")
             has_header = False
             if table.rows:
                 tr_pr = table.rows[0]._tr.trPr
                 has_header = bool(tr_pr is not None and tr_pr.find(qn("w:tblHeader")) is not None)
             if not has_header and rows:
-                warnings.append(f"Table {table_index} has no explicitly marked header row; the first row is presented as its header.")
-                has_header = True
+                warnings.append(f"Table {table_index} has no explicitly marked header row. Voxora preserves all rows as data and does not infer column headings; verify the table's header relationships in the original document.")
             block = _table_block(rows, f"Table {table_index}", header_rows=1 if has_header else 0)
             if block:
                 blocks.append(block)
@@ -233,8 +234,11 @@ def _docx_blocks(file_data: bytes) -> tuple[list[dict[str, Any]], list[str], int
     try:
         with zipfile.ZipFile(io.BytesIO(file_data)) as archive:
             names = set(archive.namelist())
+            document_xml = archive.read("word/document.xml") if "word/document.xml" in names else b""
         if any(name.startswith(("word/charts/", "word/diagrams/", "word/embeddings/")) for name in names):
             warnings.append("Embedded charts, diagrams or objects in the Word document may not be represented in the reading view.")
+        if b"w:txbxContent" in document_xml:
+            warnings.append("Text boxes in the Word document may not be included in the reading view. Verify their content and reading order in the original document.")
         if names.intersection({"word/footnotes.xml", "word/endnotes.xml", "word/comments.xml"}):
             warnings.append("Footnotes, endnotes or comments may not be included in the reading view.")
     except zipfile.BadZipFile:
@@ -261,16 +265,20 @@ def _pptx_blocks(file_data: bytes) -> tuple[list[dict[str, Any]], list[str], int
             "level": 2,
             "text": title_text or f"Slide {slide_number}",
         })
+        content_shape_count = sum(1 for shape in slide.shapes if title_shape is None or shape.shape_id != title_shape.shape_id)
+        if content_shape_count > 1:
+            warnings.append(f"Slide {slide_number} contains multiple objects. Voxora extracts them in the order stored in the presentation file, which may differ from the intended screen-reader reading order; verify the slide Reading Order pane in PowerPoint.")
         for shape in slide.shapes:
             if title_shape is not None and shape.shape_id == title_shape.shape_id:
                 continue
             if getattr(shape, "has_table", False):
                 table = shape.table
                 rows = [[cell.text for cell in row.cells] for row in table.rows]
-                header = bool(rows)
+                if table._tbl.xpath(".//a:gridSpan | .//a:rowSpan | .//a:hMerge | .//a:vMerge"):
+                    warnings.append(f"The PowerPoint table on slide {slide_number} contains merged cells. Voxora's text view may not preserve the original row and column relationships; verify the source table.")
                 if rows:
-                    warnings.append(f"The first row of a PowerPoint table on slide {slide_number} is presented as its header. Confirm that this matches the source table.")
-                block = _table_block(rows, f"Table on slide {slide_number}", header_rows=1 if header else 0)
+                    warnings.append(f"The PowerPoint table on slide {slide_number} does not expose reliable semantic header metadata. Voxora preserves all rows as data rather than assuming the first row is a header; verify the original table structure.")
+                block = _table_block(rows, f"Table on slide {slide_number}", header_rows=0)
                 if block:
                     blocks.append(block)
             elif getattr(shape, "has_text_frame", False):

@@ -1249,8 +1249,15 @@ body {
 .voxora-control-status{display:flex;align-items:center;gap:.45rem;padding:0 .45rem;font-size:.82rem;font-weight:750;white-space:nowrap}
 .voxora-control-indicator{width:9px;height:9px;border-radius:50%;background:#9a6b24}
 .voxora-control-indicator.is-active{background:#16834b;box-shadow:0 0 0 4px #16834b20}
-body{padding-bottom:calc(var(--voxora-control-dock-height, 7rem) + var(--voxora-control-dock-bottom, 1rem) + 1.25rem + env(safe-area-inset-bottom))}
-@media(max-width:640px){:root{--voxora-control-dock-bottom:.45rem;--voxora-control-dock-height:14rem}.voxora-control-dock{bottom:calc(var(--voxora-control-dock-bottom,.45rem) + env(safe-area-inset-bottom));width:calc(100vw - .9rem);gap:.35rem;padding:.55rem}.voxora-control-dock button{min-height:42px;padding:.55rem .65rem;font-size:.76rem}.voxora-control-status{width:100%;justify-content:center;padding-bottom:.1rem}body{padding-bottom:calc(var(--voxora-control-dock-height, 9.2rem) + var(--voxora-control-dock-bottom, .45rem) + 1.25rem + env(safe-area-inset-bottom))}}
+.voxora-control-dock .voxora-footer-toggle{min-height:40px;padding:.55rem .85rem;background:#075e58;color:#fff}
+.voxora-control-dock .voxora-footer-toggle:hover{background:#064b47}
+.voxora-control-dock.is-footer-visible:not(.is-expanded){left:auto;right:max(1rem,env(safe-area-inset-right));transform:none;width:auto;max-width:calc(100vw - 2rem);padding:.4rem .55rem;gap:.25rem}
+.voxora-control-dock.is-footer-visible:not(.is-expanded) .voxora-control-status,
+.voxora-control-dock.is-footer-visible:not(.is-expanded) button:not(.voxora-footer-toggle){display:none}
+body{padding-bottom:0}
+/* The fixed voice dock must not create artificial trailing space after the footer. */
+#voxora-app-root .react-site-footer{padding-bottom:24px}
+@media(max-width:640px){:root{--voxora-control-dock-bottom:.45rem;--voxora-control-dock-height:14rem}.voxora-control-dock{bottom:calc(var(--voxora-control-dock-bottom,.45rem) + env(safe-area-inset-bottom));width:calc(100vw - .9rem);gap:.35rem;padding:.55rem}.voxora-control-dock button{min-height:42px;padding:.55rem .65rem;font-size:.76rem}.voxora-control-status{width:100%;justify-content:center;padding-bottom:.1rem}}
 
 /* Route transitions keep the application shell mounted and use a compact
    inline status instead of replacing the whole viewport with a loading page. */

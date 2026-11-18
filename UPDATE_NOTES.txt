@@ -1,0 +1,48 @@
+VOXORA ACCESS — V20 DOCUMENT SEMANTICS AND VOICE RELIABILITY
+
+This update builds on the uploaded V19 source package. It does not change the Flask/React architecture, authentication, resource permissions, database schema or Render deployment model.
+
+1. DOCUMENT STRUCTURE AND TABLE SEMANTICS
+   - DOCX tables use a header row only when the source explicitly marks the row with Word table-header metadata.
+   - DOCX tables without an explicit header row preserve every row as data and display a warning instead of guessing.
+   - CSV and PowerPoint tables no longer assume that their first row is a header. All rows are preserved as data until their source semantics can be verified.
+   - PowerPoint extraction warns that stored shape order may differ from the intended screen-reader reading order.
+   - DOCX and PPTX extraction warn when merged cells may obscure original row/column relationships.
+   - Word text boxes are identified as a possible extraction gap. Existing warnings for charts, diagrams, embedded objects, notes and image descriptions remain.
+   - Markdown tables retain header semantics because their separator row explicitly identifies the header row.
+   - Resource owners can refresh extracted reading text for existing uploads, so the corrected semantics can be applied without uploading duplicate files.
+
+2. VOICE PLAYBACK RELIABILITY
+   - Voxora no longer calls speechSynthesis.cancel() every time it starts an otherwise idle utterance. This avoids an unnecessary reset that can interfere with speech output in some mobile browsers.
+   - The component warms the browser's voice list and selects a voice using the user's language, then an English voice, then the system default.
+   - Speech chunks are limited by word boundaries, including when a source contains a very long sentence without punctuation.
+   - Startup and completion watchdogs report a failed or stalled utterance instead of leaving the interface stuck in a speaking state.
+   - A Test speaker control plays a short Web Audio tone and then a spoken phrase. This distinguishes device output problems from speech-synthesis problems as far as browser APIs allow.
+   - The microphone mute state remains independent of speaker output.
+
+3. WELCOME GREETING
+   - The welcome is attempted on every full page load rather than being suppressed by a sessionStorage flag after the first visit in the same tab.
+   - If automatic speech is blocked, a persistent Play welcome control remains visible until the welcome finishes or the user chooses another speech action.
+   - A page interaction or keyboard activation can retry pending welcome speech. Browsers may still require a real user gesture before allowing audio.
+
+4. MICROPHONE CONTROL STATE
+   - The microphone action now reflects three states: Enable microphone when voice access is inactive, Mute microphone while listening, and Unmute microphone while muted.
+   - aria-pressed reflects the active listening state, and a data attribute exposes the current microphone state for testing.
+
+5. FOOTER SPACING
+   - Removed the footer's extra bottom padding that reserved the entire fixed voice-dock height and appeared as a large blank area below the footer content.
+   - When the footer enters the viewport, the dock collapses to a compact control launcher; it expands on request and offers Play welcome directly when a greeting is pending.
+   - Body bottom padding remains zero; the scroll-to-top control still uses the measured dock height to stay clear of the controls.
+
+6. LONG DOCUMENT READING
+   - Removed the separate 40,000-character read-aloud cut-off. Voxora now sends all text returned by the accessible reading view to its segmented speech queue, up to the configured extraction limit.
+   - A warning is still provided when the source document was only partially extracted.
+
+VALIDATION
+   - 96 Python unit and source-regression tests passed after the changes.
+   - The browser test suite was updated for the welcome retry, speaker test, microphone state, document reading and footer changes.
+   - A live browser/Render deployment test has not yet been performed in this environment.
+   - The Vite production build and Playwright/axe browser suite must still be run by the build pipeline or locally after installing the frontend and browser-test dependencies.
+
+IMPORTANT BROWSER LIMITATION
+   - No website can guarantee audible speech when a device is physically muted, its media volume is zero, the browser has no available speech voice, or the operating system blocks audio. The Test speaker control provides a diagnostic tone and a separate speech test; it does not override device or browser restrictions.

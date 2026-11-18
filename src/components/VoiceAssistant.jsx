@@ -2,6 +2,8 @@ import React, { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { accountNav, legal, nav, normalizeVoiceText } from "../data/navigation.js";
 
+const WELCOME_TEXT = "Hello, welcome to Voxora Access. I am Voxora, your voice-powered website assistant. I can help you explore the website, find and manage learning resources, understand pages, and complete actions here. You can interrupt me whenever you need. After this welcome, I will stay quiet until you speak to me.";
+
 export default function VoiceAssistant() {
     const navigate = useNavigate();
     const voiceLocation = useLocation();
@@ -10,6 +12,9 @@ export default function VoiceAssistant() {
     const [speaking, setSpeaking] = useState(false);
     const [busy, setBusy] = useState(false);
     const [notice, setNotice] = useState("");
+    const [welcomeAvailable, setWelcomeAvailable] = useState(false);
+    const [footerVisible, setFooterVisible] = useState(false);
+    const [dockExpanded, setDockExpanded] = useState(false);
     const [retrySeconds, setRetrySeconds] = useState(0);
     const getScrollBehavior = () => (
         typeof window.matchMedia === "function" &&
@@ -41,6 +46,11 @@ export default function VoiceAssistant() {
     const speakingTextRef = useRef("");
     const requestAbortRef = useRef(null);
     const speechQueueRef = useRef([]);
+    const speechWatchdogRef = useRef(null);
+    const speechEndWatchdogRef = useRef(null);
+    const pendingSpeechRef = useRef(null);
+    const welcomePendingRef = useRef(false);
+    const welcomeGestureHandlerRef = useRef(null);
     const headingIndexRef = useRef(-1);
     const speechRunRef = useRef(0);
     const speakRef = useRef(null);
@@ -182,10 +192,37 @@ export default function VoiceAssistant() {
         }
     };
 
+    const clearSpeechWatchdog = () => {
+        if (speechWatchdogRef.current !== null) {
+            window.clearTimeout(speechWatchdogRef.current);
+            speechWatchdogRef.current = null;
+        }
+        if (speechEndWatchdogRef.current !== null) {
+            window.clearTimeout(speechEndWatchdogRef.current);
+            speechEndWatchdogRef.current = null;
+        }
+    };
+
+    const removeWelcomeGestureListener = () => {
+        const handler = welcomeGestureHandlerRef.current;
+        if (!handler) return;
+        document.removeEventListener("pointerdown", handler, true);
+        document.removeEventListener("keydown", handler, true);
+        welcomeGestureHandlerRef.current = null;
+    };
+
     const interruptSpeech = () => {
+        const interruptedWelcome = welcomePendingRef.current;
         speechRunRef.current += 1;
+        clearSpeechWatchdog();
         window.speechSynthesis?.cancel();
         speechQueueRef.current = [];
+        pendingSpeechRef.current = interruptedWelcome
+            ? { text: WELCOME_TEXT, welcome: true }
+            : null;
+        welcomePendingRef.current = interruptedWelcome;
+        if (interruptedWelcome) setWelcomeAvailable(true);
+        else removeWelcomeGestureListener();
         speakingRef.current = false;
         speakingTextRef.current = "";
         setSpeaking(false);
@@ -321,64 +358,205 @@ export default function VoiceAssistant() {
         try { recognitionRef.current?.start(); } catch (_) {}
     };
 
-    const speak = (text) => {
-        if (!("speechSynthesis" in window)) {
-            setNotice("This browser does not support speech output. You can still use your device's screen reader with the document text.");
-            resumeListening();
-            return;
-        }
-        if (mutedRef.current) {
-            setNotice("Speech output is muted. Unmute the Voxora microphone control before asking me to read aloud.");
-            return;
-        }
+    const speak = (text, options = {}) => {
+        const welcome = Boolean(options.welcome);
+        const userGesture = Boolean(options.userGesture);
         const content = String(text || "").trim();
-        if (!content) return;
+        if (!content) return false;
+
+        const synthesis = window.speechSynthesis;
+        const Utterance = window.SpeechSynthesisUtterance;
+        if (!synthesis || typeof Utterance !== "function") {
+            speakingRef.current = false;
+            setSpeaking(false);
+            setNotice("This browser does not support Voxora voice playback. Use your device's screen reader or a supported browser with speech synthesis enabled.");
+            if (welcome) {
+                welcomePendingRef.current = true;
+                pendingSpeechRef.current = { text: content, welcome: true };
+                setWelcomeAvailable(true);
+            }
+            return false;
+        }
 
         const runId = ++speechRunRef.current;
-        window.speechSynthesis.cancel();
+        clearSpeechWatchdog();
+        const previousSpeechActive = Boolean(
+            speakingRef.current || synthesis.speaking || synthesis.pending
+        );
+        if (previousSpeechActive) {
+            try { synthesis.cancel(); } catch (_) {}
+        }
+        if (synthesis.paused) {
+            try { synthesis.resume(); } catch (_) {}
+        }
+
         speechQueueRef.current = [];
         const sentences = content.match(/[^.!?;]+[.!?;]*/g) || [content];
         let chunk = "";
         for (const sentence of sentences) {
-            const next = (chunk + " " + sentence).trim();
-            if (next.length > 1000 && chunk) {
-                speechQueueRef.current.push(chunk);
-                chunk = sentence.trim();
-            } else {
-                chunk = next;
+            for (const word of sentence.trim().split(/\s+/)) {
+                if (!word) continue;
+                const next = (chunk + " " + word).trim();
+                if (next.length > 900 && chunk) {
+                    speechQueueRef.current.push(chunk);
+                    chunk = word;
+                } else {
+                    chunk = next;
+                }
             }
         }
         if (chunk) speechQueueRef.current.push(chunk);
+
+        // Microphone mute affects input only. It must never disable speaker output.
         speakingRef.current = true;
         speakingTextRef.current = content;
-        setSpeaking(true);
-
-        // If the browser cannot provide an echo-cancelled microphone signal,
-        // use safe half-duplex mode rather than allowing TTS to trigger STT.
+        setSpeaking(false);
+        setNotice("Preparing Voxora's spoken response…");
+        pendingSpeechRef.current = null;
+        if (welcome) {
+            welcomePendingRef.current = true;
+            setWelcomeAvailable(true);
+        } else if (!options.preserveWelcome) {
+            welcomePendingRef.current = false;
+            setWelcomeAvailable(false);
+            removeWelcomeGestureListener();
+        }
         if (!echoCancellationRef.current) recognitionRef.current?.stop();
+
+        let firstSegment = true;
+        const finish = () => {
+            if (runId !== speechRunRef.current) return;
+            clearSpeechWatchdog();
+            speakingRef.current = false;
+            speakingTextRef.current = "";
+            setSpeaking(false);
+            resumeListening();
+        };
+
+        const fail = (reason) => {
+            if (runId !== speechRunRef.current) return;
+            clearSpeechWatchdog();
+            speechRunRef.current += 1;
+            try { synthesis.cancel(); } catch (_) {}
+            speechQueueRef.current = [];
+            speakingRef.current = false;
+            speakingTextRef.current = "";
+            setSpeaking(false);
+            const detail = String(reason || "playback did not start").replace(/[-_]/g, " ");
+            pendingSpeechRef.current = { text: content, welcome };
+            if (welcome) {
+                welcomePendingRef.current = true;
+                setWelcomeAvailable(true);
+                setNotice("Voxora could not start the welcome audio automatically. Select Play welcome or interact with the page to try again.");
+            } else {
+                setNotice(`Voxora could not play audio (${detail}). Select Test speaker to retry, and check your device media volume and browser audio settings.`);
+            }
+            resumeListening();
+        };
 
         const speakNext = () => {
             if (runId !== speechRunRef.current) return;
-            if (!speechQueueRef.current.length || mutedRef.current) {
-                speakingRef.current = false;
-                speakingTextRef.current = "";
-                setSpeaking(false);
-                resumeListening();
+            if (!speechQueueRef.current.length) {
+                if (welcome) {
+                    welcomePendingRef.current = false;
+                    pendingSpeechRef.current = null;
+                    setWelcomeAvailable(false);
+                    removeWelcomeGestureListener();
+                }
+                finish();
                 return;
             }
+
             const segment = speechQueueRef.current.shift();
             speakingTextRef.current = segment;
-            const utterance = new SpeechSynthesisUtterance(segment);
-            utterance.rate = 1;
+            const utterance = new Utterance(segment);
+            utterance.rate = 0.96;
+            utterance.pitch = 1;
+            utterance.volume = 1;
+            const preferredLanguage = (navigator.language || "en-NG").toLowerCase();
+            const languageBase = preferredLanguage.split("-")[0];
+            try {
+                const voices = synthesis.getVoices?.() || [];
+                const selectedVoice = voices.find((voice) => voice.lang?.toLowerCase() === preferredLanguage)
+                    || voices.find((voice) => voice.lang?.toLowerCase().startsWith(`${languageBase}-`))
+                    || voices.find((voice) => /^en(?:-|$)/i.test(voice.lang || ""))
+                    || voices.find((voice) => voice.default)
+                    || voices[0];
+                if (selectedVoice) {
+                    utterance.voice = selectedVoice;
+                    utterance.lang = selectedVoice.lang || preferredLanguage;
+                } else {
+                    utterance.lang = /^en(?:-|$)/i.test(preferredLanguage) ? preferredLanguage : "en-US";
+                }
+            } catch (_) {
+                utterance.lang = /^en(?:-|$)/i.test(preferredLanguage) ? preferredLanguage : "en-US";
+            }
+
+            let started = false;
+            clearSpeechWatchdog();
+            speechWatchdogRef.current = window.setTimeout(() => {
+                if (runId === speechRunRef.current && !started) fail("playback did not start");
+            }, 7000);
+
+            utterance.onstart = () => {
+                if (runId !== speechRunRef.current) return;
+                started = true;
+                if (speechWatchdogRef.current !== null) {
+                    window.clearTimeout(speechWatchdogRef.current);
+                    speechWatchdogRef.current = null;
+                }
+                setSpeaking(true);
+                setNotice("Voxora is speaking. If you cannot hear audio, check your device media volume or use Test speaker.");
+                // Some browsers fire onstart but never deliver onend. Do not leave
+                // the interface permanently stuck in the speaking state.
+                speechEndWatchdogRef.current = window.setTimeout(() => {
+                    if (runId === speechRunRef.current) fail("playback stalled");
+                }, Math.max(15000, Math.min(120000, segment.length * 120)));
+                if (firstSegment) firstSegment = false;
+            };
+
             utterance.onend = () => {
-                if (runId === speechRunRef.current) speakNext();
+                if (runId !== speechRunRef.current) return;
+                if (speechEndWatchdogRef.current !== null) {
+                    window.clearTimeout(speechEndWatchdogRef.current);
+                    speechEndWatchdogRef.current = null;
+                }
+                if (speechQueueRef.current.length) {
+                    speakNext();
+                    return;
+                }
+                if (welcome) {
+                    welcomePendingRef.current = false;
+                    pendingSpeechRef.current = null;
+                    setWelcomeAvailable(false);
+                    removeWelcomeGestureListener();
+                }
+                finish();
             };
-            utterance.onerror = () => {
-                if (runId === speechRunRef.current) speakNext();
+
+            utterance.onerror = (event) => {
+                if (runId !== speechRunRef.current) return;
+                fail(event?.error || "speech error");
             };
-            window.speechSynthesis.speak(utterance);
+
+            try {
+                synthesis.speak(utterance);
+            } catch (error) {
+                fail(error?.name || "speech error");
+            }
         };
-        speakNext();
+
+        // Calling cancel() on an idle synthesis engine can silence subsequent
+        // utterances in some mobile browsers. Only cancel an active utterance,
+        // and give the engine a short reset interval before queuing the next one.
+        if (previousSpeechActive) {
+            window.setTimeout(() => {
+                if (runId === speechRunRef.current) speakNext();
+            }, userGesture ? 80 : 120);
+        } else {
+            speakNext();
+        }
+        return true;
     };
 
     speakRef.current = speak;
@@ -391,13 +569,11 @@ export default function VoiceAssistant() {
                 setNotice("No extracted document text is available to read yet.");
                 return;
             }
-            const maxReadCharacters = 40000;
-            const selectedText = text.slice(0, maxReadCharacters);
-            const limited = text.length > maxReadCharacters || window.voxoraCurrentResourceTruncated;
+            const limited = Boolean(window.voxoraCurrentResourceTruncated);
             setNotice(limited
-                ? "Reading the available opening section. You can interrupt me at any time."
-                : "Reading the document. You can interrupt me at any time.");
-            speakRef.current?.((limited ? "I will read the available opening section. Some later content or visual information may not be included. " : "") + selectedText);
+                ? "Preparing audio for all extracted text. The source document may contain additional content not extracted by Voxora…"
+                : "Preparing the complete extracted document for audio…");
+            speakRef.current?.((limited ? "The source document was partially extracted. I will read all text currently available to Voxora. " : "") + text);
         };
         const stopDocument = () => {
             interruptSpeechRef.current?.();
@@ -467,15 +643,14 @@ export default function VoiceAssistant() {
             if (!pageText) {
                 speak("I cannot find readable page content here.");
             } else {
-                const maxReadCharacters = 40000;
-                const selectedText = pageText.slice(0, maxReadCharacters);
-                setNotice(pageText.length > maxReadCharacters || window.voxoraCurrentResourceTruncated
-                    ? "Reading the available document text. The reading limit may exclude later content. You can interrupt me at any time."
-                    : "Reading the current page. You can interrupt me at any time.");
-                const prefix = pageText.length > maxReadCharacters || window.voxoraCurrentResourceTruncated
-                    ? "I will read the available opening section. The document may contain additional content or visual information not included here. "
+                const limited = Boolean(window.voxoraCurrentResourceTruncated);
+                setNotice(limited
+                    ? "Preparing audio for all extracted page text. Some source content may not have been extracted…"
+                    : "Preparing the complete page for audio…");
+                const prefix = limited
+                    ? "The source document was partially extracted. I will read all text currently available to Voxora. "
                     : "";
-                speak(prefix + selectedText);
+                speak(prefix + pageText);
             }
             return;
         }
@@ -716,7 +891,7 @@ export default function VoiceAssistant() {
                 window.dispatchEvent(new Event("voxora:data-changed"));
             }
             persistConversation([...next, { role: "assistant", content: answer }]);
-            setNotice("Voxora is speaking…");
+            setNotice("Preparing Voxora's spoken response…");
             busyRef.current = false;
             setBusy(false);
             speak(answer);
@@ -970,13 +1145,45 @@ export default function VoiceAssistant() {
         return results;
     };
 
+    const testSpeaker = () => {
+        // The short Web Audio tone checks the device output independently of
+        // the browser's speech engine; the spoken phrase then tests TTS itself.
+        try {
+            const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+            if (AudioContextClass) {
+                const context = new AudioContextClass();
+                const playTone = () => {
+                    try {
+                        const oscillator = context.createOscillator();
+                        const gain = context.createGain();
+                        oscillator.type = "sine";
+                        oscillator.frequency.value = 660;
+                        gain.gain.setValueAtTime(0.0001, context.currentTime);
+                        gain.gain.exponentialRampToValueAtTime(0.08, context.currentTime + 0.025);
+                        gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.28);
+                        oscillator.connect(gain);
+                        gain.connect(context.destination);
+                        oscillator.onended = () => { try { context.close(); } catch (_) {} };
+                        oscillator.start();
+                        oscillator.stop(context.currentTime + 0.3);
+                    } catch (_) {
+                        try { context.close(); } catch (_) {}
+                    }
+                };
+                const resumed = context.state === "suspended" ? context.resume() : null;
+                if (resumed?.then) resumed.then(playTone).catch(() => { try { context.close(); } catch (_) {} });
+                else playTone();
+            }
+        } catch (_) {}
+        speakRef.current?.("This is a Voxora speaker test. If you hear the tone but not this message, check your browser's speech voice settings.", { userGesture: true, preserveWelcome: true });
+    };
+
     const mute = () => {
         mutedRef.current = true;
         setMuted(true);
         recognitionRef.current?.stop();
-        interruptSpeech();
         releaseAudioMonitor();
-        setNotice("Microphone muted. Select Resume listening when you are ready.");
+        setNotice("Microphone muted. Voxora can still speak; select Unmute microphone to resume listening.");
     };
 
     const endSession = () => {
@@ -991,28 +1198,106 @@ export default function VoiceAssistant() {
     };
 
     useEffect(() => {
-        // Attempt voice activation on page arrival. Browser permission and user-gesture
-        // policies may require the user to press the accessible start control.
-        const timer = window.setTimeout(() => startListening(), 500);
-        const welcomeTimer = window.setTimeout(() => {
+        // A new page load is a new visit. Do not let a sessionStorage flag
+        // suppress the greeting after the user reloads or reopens the website.
+        // The browser may still require a real user gesture before audio starts.
+        const welcomeEnabled = window.voxoraWelcomeEnabled !== false;
+        if (welcomeEnabled) {
+            welcomePendingRef.current = true;
+            pendingSpeechRef.current = { text: WELCOME_TEXT, welcome: true };
+            setWelcomeAvailable(true);
+        }
+
+        const retryPendingSpeechFromGesture = (event) => {
+            if (event.type === "keydown" && !["Enter", " "].includes(event.key)) return;
+            const target = event.target;
+            if (target?.closest?.(".voxora-welcome-button, .voxora-test-speaker")) return;
+            const dockButton = target?.closest?.(".voxora-control-dock button");
+            if (dockButton && !dockButton.classList.contains("voxora-dock-primary")) return;
+
+            if (speakingRef.current) return;
+            const pending = pendingSpeechRef.current || (welcomePendingRef.current
+                ? { text: WELCOME_TEXT, welcome: true }
+                : null);
+            if (!pending) return;
+            speakRef.current?.(pending.text, { welcome: pending.welcome, userGesture: true });
+        };
+
+        if (welcomeEnabled) {
+            welcomeGestureHandlerRef.current = retryPendingSpeechFromGesture;
+            document.addEventListener("pointerdown", retryPendingSpeechFromGesture, { capture: true, passive: true });
+            document.addEventListener("keydown", retryPendingSpeechFromGesture, true);
+        }
+
+        const welcomeTimer = welcomeEnabled ? window.setTimeout(() => {
+            if (welcomePendingRef.current && pendingSpeechRef.current?.welcome) {
+                speakRef.current?.(WELCOME_TEXT, { welcome: true });
+            }
+        }, 1300) : null;
+
+        // Load available system voices early. Several mobile browsers populate
+        // getVoices() asynchronously and can otherwise start a silent utterance.
+        const synthesis = window.speechSynthesis;
+        const warmVoices = () => {
+            try { synthesis?.getVoices?.(); } catch (_) {}
+        };
+        warmVoices();
+        synthesis?.addEventListener?.("voiceschanged", warmVoices);
+
+        // Resume hands-free listening only after explicit microphone permission.
+        const resumeTimer = window.setTimeout(async () => {
             try {
-                if (!window.localStorage.getItem("voxora-welcomed-v1")) {
-                    window.localStorage.setItem("voxora-welcomed-v1", "1");
-                    speak("Hello, welcome to Voxora Access. I am Voxora, your voice-powered website assistant. I can help you explore the website, find and manage learning resources, understand pages, and complete actions here. You can interrupt me whenever you need. After this welcome, I will stay quiet until you speak to me.");
-                }
+                const permission = await navigator.permissions?.query({ name: "microphone" });
+                if (permission?.state === "granted") startListening();
             } catch (_) {}
-        }, 1300);
+        }, 700);
+
         return () => {
-            window.clearTimeout(timer);
-            window.clearTimeout(welcomeTimer);
+            if (welcomeTimer !== null) window.clearTimeout(welcomeTimer);
+            window.clearTimeout(resumeTimer);
+            removeWelcomeGestureListener();
+            synthesis?.removeEventListener?.("voiceschanged", warmVoices);
             activeRef.current = false;
             speechRunRef.current += 1;
+            clearSpeechWatchdog();
             recognitionRef.current?.stop();
-            window.speechSynthesis?.cancel();
+            synthesis?.cancel();
             speechQueueRef.current = [];
+            pendingSpeechRef.current = null;
             releaseAudioMonitor();
         };
     }, []);
+
+    useEffect(() => {
+        setFooterVisible(false);
+        setDockExpanded(false);
+        if (typeof window.IntersectionObserver !== "function") return undefined;
+        const root = document.querySelector("#voxora-app-root") || document.body;
+        let observedFooter = null;
+        let footerObserver = null;
+        const observeFooter = () => {
+            const footer = document.querySelector(".react-site-footer");
+            if (!footer || footer === observedFooter) return;
+            footerObserver?.disconnect();
+            observedFooter = footer;
+            footerObserver = new window.IntersectionObserver((entries) => {
+                const visible = entries.some((entry) => entry.isIntersecting);
+                setFooterVisible(visible);
+                if (!visible) setDockExpanded(false);
+            }, { threshold: 0.01 });
+            footerObserver.observe(footer);
+        };
+        observeFooter();
+        const mutationObserver = typeof window.MutationObserver === "function"
+            ? new window.MutationObserver(observeFooter)
+            : null;
+        mutationObserver?.observe(root, { childList: true, subtree: true });
+        return () => {
+            mutationObserver?.disconnect();
+            footerObserver?.disconnect();
+            observedFooter = null;
+        };
+    }, [voiceLocation.pathname]);
 
     useEffect(() => {
         const dock = document.querySelector(".voxora-control-dock");
@@ -1050,20 +1335,32 @@ export default function VoiceAssistant() {
             <button type="button" aria-label="Dismiss Voxora notification" onClick={() => setNotice("")}>×</button>
         </>}
     </div>
-    <div className="voxora-control-dock" role="region" aria-label="Voxora controls">
+    <div className={"voxora-control-dock" + (footerVisible ? " is-footer-visible" : "") + (dockExpanded ? " is-expanded" : "")} role="region" aria-label="Voxora controls">
         <div className="voxora-control-status" role="status" aria-live="polite" aria-atomic="true">
             <span className={"voxora-control-indicator" + (active && !muted ? " is-active" : "")} aria-hidden="true"/>
             <span>{retrySeconds > 0 ? "AI cooldown" : busy ? "Processing" : speaking ? (echoCancellationRef.current ? "Speaking · interruptible" : "Speaking · listening paused") : active && !muted ? "Listening" : muted ? "Microphone muted" : "Voice access paused"}</span>
             {retrySeconds > 0 && <span aria-hidden="true">· {retrySeconds}s</span>}
         </div>
-        <button type="button" className="voxora-dock-primary" onClick={startListening}><span aria-hidden="true">🎙</span> {active && !muted ? "Listening on" : "Enable / Resume"}</button>
-        <button type="button" aria-pressed={muted} onClick={() => muted ? startListening() : mute()}>Mute microphone</button>
-        <button type="button" onClick={() => {
-            interruptSpeech();
-            setNotice("Speech stopped. You can speak whenever you're ready.");
-            resumeListening();
-        }}><span aria-hidden="true">■</span> Stop speaking</button>
-        <button type="button" onClick={() => active ? endSession() : startListening()}><span aria-hidden="true">{active ? "Ⅱ" : "▶"}</span> {active ? "Pause access" : "Resume access"}</button>
+        {(!footerVisible || dockExpanded) && <>
+            <button type="button" className="voxora-dock-primary" onClick={startListening}><span aria-hidden="true">🎙</span> {active && !muted ? "Listening on" : "Enable / Resume"}</button>
+            {welcomeAvailable && <button type="button" className="voxora-welcome-button" onClick={() => speakRef.current?.(WELCOME_TEXT, { welcome: true, userGesture: true })}>Play welcome</button>}
+            <button type="button" className="voxora-test-speaker" onClick={testSpeaker}>Test speaker</button>
+            <button type="button" className="voxora-microphone-toggle" data-microphone-state={muted ? "muted" : active ? "listening" : "inactive"} aria-pressed={Boolean(active && !muted)} onClick={() => (muted || !active) ? startListening() : mute()}>{muted ? "Unmute microphone" : active ? "Mute microphone" : "Enable microphone"}</button>
+            <button type="button" onClick={() => {
+                interruptSpeech();
+                setNotice("Speech stopped. You can speak whenever you're ready.");
+                resumeListening();
+            }}><span aria-hidden="true">■</span> Stop speaking</button>
+            <button type="button" onClick={() => active ? endSession() : startListening()}><span aria-hidden="true">{active ? "Ⅱ" : "▶"}</span> {active ? "Pause access" : "Resume access"}</button>
+        </>}
+        {footerVisible && <button type="button" className="voxora-footer-toggle" aria-expanded={dockExpanded} onClick={() => {
+            if (!dockExpanded && welcomeAvailable) {
+                setDockExpanded(true);
+                speakRef.current?.(WELCOME_TEXT, { welcome: true, userGesture: true });
+            } else {
+                setDockExpanded((current) => !current);
+            }
+        }}>{dockExpanded ? "Collapse controls" : welcomeAvailable ? "Play welcome" : "Voxora controls"}</button>}
     </div>
     </>;
 }
