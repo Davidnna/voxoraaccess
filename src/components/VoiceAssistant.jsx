@@ -43,6 +43,8 @@ export default function VoiceAssistant() {
     const speechQueueRef = useRef([]);
     const headingIndexRef = useRef(-1);
     const speechRunRef = useRef(0);
+    const speakRef = useRef(null);
+    const interruptSpeechRef = useRef(null);
     const micStreamRef = useRef(null);
     const audioContextRef = useRef(null);
     const analyserRef = useRef(null);
@@ -320,8 +322,13 @@ export default function VoiceAssistant() {
     };
 
     const speak = (text) => {
-        if (!("speechSynthesis" in window) || mutedRef.current) {
+        if (!("speechSynthesis" in window)) {
+            setNotice("This browser does not support speech output. You can still use your device's screen reader with the document text.");
             resumeListening();
+            return;
+        }
+        if (mutedRef.current) {
+            setNotice("Speech output is muted. Unmute the Voxora microphone control before asking me to read aloud.");
             return;
         }
         const content = String(text || "").trim();
@@ -374,12 +381,48 @@ export default function VoiceAssistant() {
         speakNext();
     };
 
+    speakRef.current = speak;
+    interruptSpeechRef.current = interruptSpeech;
+
+    useEffect(() => {
+        const readDocument = () => {
+            const text = String(window.voxoraCurrentResourceText || "").trim();
+            if (!text) {
+                setNotice("No extracted document text is available to read yet.");
+                return;
+            }
+            const maxReadCharacters = 40000;
+            const selectedText = text.slice(0, maxReadCharacters);
+            const limited = text.length > maxReadCharacters || window.voxoraCurrentResourceTruncated;
+            setNotice(limited
+                ? "Reading the available opening section. You can interrupt me at any time."
+                : "Reading the document. You can interrupt me at any time.");
+            speakRef.current?.((limited ? "I will read the available opening section. Some later content or visual information may not be included. " : "") + selectedText);
+        };
+        const stopDocument = () => {
+            interruptSpeechRef.current?.();
+            setNotice("Document reading stopped.");
+        };
+        window.addEventListener("voxora:read-document", readDocument);
+        window.addEventListener("voxora:stop-reading", stopDocument);
+        return () => {
+            window.removeEventListener("voxora:read-document", readDocument);
+            window.removeEventListener("voxora:stop-reading", stopDocument);
+        };
+    }, []);
+
     const getCurrentPageContext = () => {
         const main = document.querySelector("#main-content");
+        const readerContent = main?.querySelector(".react-document-reading-content")?.innerText || "";
+        const readerStatus = main?.querySelector(".react-extraction-status")?.innerText || "";
+        const resourceText = window.voxoraCurrentResourceText || "";
+        const pageText = readerContent
+            ? [readerContent, readerStatus].filter(Boolean).join("\n\n")
+            : (main?.innerText || resourceText);
         return {
             path: window.location.pathname,
             title: document.title,
-            text: [(main?.innerText || "").trim(), window.voxoraCurrentResourceText || ""].filter(Boolean).join("\n\n").slice(0, 12000),
+            text: pageText.trim().slice(0, 12000),
             controls: Array.from(main?.querySelectorAll("a,button,input,select,textarea,[role='button'],[role='checkbox'],[role='switch']") || [])
                 .filter(element => !element.disabled && element.getAttribute("aria-hidden") !== "true" && element.type !== "password" && element.type !== "hidden" && element.getClientRects().length > 0)
                 .slice(0, 35)
@@ -419,15 +462,20 @@ export default function VoiceAssistant() {
         if (/^(?:please )?(?:read|speak) (?:out )?(?:the )?(?:content of )?(?:this |current )?(?:page|screen|document|resource)(?: to me| aloud)?$|^(read it (to me|aloud)|start reading)$/i.test(command)) {
             const main = document.querySelector("#main-content");
             const documentText = window.voxoraCurrentResourceText || "";
-            const pageText = [main?.innerText || document.body.innerText || "", documentText].filter(Boolean).join("\n\n").trim();
+            const readerContent = main?.querySelector(".react-document-reading-content")?.innerText || "";
+            const pageText = (readerContent || main?.innerText || document.body.innerText || documentText).trim();
             if (!pageText) {
                 speak("I cannot find readable page content here.");
             } else {
-                setNotice("Reading the current page. You can interrupt me at any time.");
-                const prefix = window.voxoraCurrentResourceTruncated
-                    ? "I can read the extracted text available for this document. This is an excerpt and may not include every page or visual element. "
+                const maxReadCharacters = 40000;
+                const selectedText = pageText.slice(0, maxReadCharacters);
+                setNotice(pageText.length > maxReadCharacters || window.voxoraCurrentResourceTruncated
+                    ? "Reading the available document text. The reading limit may exclude later content. You can interrupt me at any time."
+                    : "Reading the current page. You can interrupt me at any time.");
+                const prefix = pageText.length > maxReadCharacters || window.voxoraCurrentResourceTruncated
+                    ? "I will read the available opening section. The document may contain additional content or visual information not included here. "
                     : "";
-                speak(prefix + pageText.slice(0, 12000));
+                speak(prefix + selectedText);
             }
             return;
         }

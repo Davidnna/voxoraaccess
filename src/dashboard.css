@@ -1282,3 +1282,152 @@ body{padding-bottom:calc(var(--voxora-control-dock-height, 7rem) + var(--voxora-
         animation: none;
     }
 }
+
+/* Accessible document reading view */
+#voxora-app-root .react-reader-intro,
+#voxora-app-root .react-extraction-status,
+#voxora-app-root .react-extraction-message {
+    max-width: 78ch;
+}
+
+#voxora-app-root .react-reader-toolbar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: .75rem 1rem;
+    margin: 1.25rem 0;
+    padding: 1rem;
+    border: 1px solid var(--react-line);
+    border-radius: 14px;
+    background: var(--react-surface);
+}
+
+#voxora-app-root .react-reader-toolbar label {
+    font-weight: 700;
+}
+
+#voxora-app-root .react-reader-toolbar input[type="range"] {
+    width: min(180px, 35vw);
+    min-height: 32px;
+    accent-color: var(--react-teal);
+}
+
+#voxora-app-root .react-reader-toolbar output {
+    min-width: 3.5rem;
+    font-variant-numeric: tabular-nums;
+    font-weight: 750;
+}
+
+#voxora-app-root .react-extraction-status {
+    margin: 1.25rem 0;
+    padding: 1rem 1.15rem;
+    border: 1px solid #d9e3dd;
+    border-left: 4px solid var(--react-teal);
+    border-radius: 12px;
+    background: #f5f8f3;
+}
+
+#voxora-app-root .react-extraction-status h2,
+#voxora-app-root .react-extraction-status h3 {
+    margin-top: 0;
+}
+
+#voxora-app-root .react-extraction-status ul {
+    padding-left: 1.35rem;
+}
+
+#voxora-app-root .react-extraction-status.status-partial,
+#voxora-app-root .react-extraction-status.status-needs_ocr,
+#voxora-app-root .react-extraction-status.status-failed,
+#voxora-app-root .react-extraction-status.status-pending {
+    border-left-color: #9a5b00;
+    background: #fff8e8;
+}
+
+#voxora-app-root .react-document-reading-content {
+    max-width: 82ch;
+    margin: 1.75rem 0 2.5rem;
+    padding: clamp(1rem, 3vw, 2rem);
+    border: 1px solid var(--react-line);
+    border-radius: 16px;
+    background: #fff;
+    color: var(--react-ink);
+    font-size: var(--reader-text-size, 100%);
+    line-height: 1.8;
+    overflow-wrap: anywhere;
+}
+
+#voxora-app-root .react-document-reading-content h2,
+#voxora-app-root .react-document-reading-content h3,
+#voxora-app-root .react-document-reading-content h4,
+#voxora-app-root .react-document-reading-content h5,
+#voxora-app-root .react-document-reading-content h6 {
+    margin: 1.8em 0 .65em;
+    line-height: 1.35;
+    color: var(--react-forest);
+}
+
+#voxora-app-root .react-document-reading-content p,
+#voxora-app-root .react-document-reading-content li {
+    max-width: 78ch;
+    line-height: 1.8;
+}
+
+#voxora-app-root .react-document-reading-content p {
+    white-space: pre-wrap;
+}
+
+#voxora-app-root .react-reader-table-wrap {
+    max-width: 100%;
+    margin: 1.5rem 0;
+    overflow-x: auto;
+    border: 1px solid var(--react-line);
+    border-radius: 10px;
+}
+
+#voxora-app-root .react-document-reading-content table {
+    width: 100%;
+    border-collapse: collapse;
+    background: #fff;
+}
+
+#voxora-app-root .react-document-reading-content caption {
+    padding: .8rem;
+    text-align: left;
+    font-weight: 750;
+    color: var(--react-forest);
+}
+
+#voxora-app-root .react-document-reading-content th,
+#voxora-app-root .react-document-reading-content td {
+    min-width: 8rem;
+    padding: .7rem .8rem;
+    border: 1px solid var(--react-line);
+    text-align: left;
+    vertical-align: top;
+}
+
+#voxora-app-root .react-document-reading-content th {
+    background: var(--react-soft);
+    font-weight: 750;
+}
+
+#voxora-app-root .react-extraction-message {
+    padding: .8rem 1rem;
+    border-left: 4px solid var(--react-teal);
+    background: #eef6f2;
+}
+
+@media (max-width: 640px) {
+    #voxora-app-root .react-reader-toolbar {
+        align-items: flex-start;
+    }
+
+    #voxora-app-root .react-reader-toolbar input[type="range"] {
+        width: min(100%, 220px);
+    }
+
+    #voxora-app-root .react-document-reading-content {
+        padding: 1rem;
+    }
+}

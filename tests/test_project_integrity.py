@@ -115,6 +115,77 @@ class ProjectIntegrityTests(unittest.TestCase):
         self.assertIn("_voxora_user_loaded", source)
         self.assertIn("_voxora_user", source)
 
+    def test_upload_extracts_document_content_and_persists_structure(self):
+        upload_function = next(
+            node for node in self.backend_ast.body
+            if isinstance(node, ast.FunctionDef) and node.name == "upload"
+        )
+        source = ast.get_source_segment(self.backend, upload_function)
+        self.assertIn("extraction = extract_document(", source)
+        self.assertIn('extraction["text"]', source)
+        self.assertIn('Jsonb(extraction["blocks"])', source)
+        self.assertIn('extraction["status"]', source)
+        self.assertIn('extraction["truncated"]', source)
+        self.assertNotIn('                    "",\n                    file_data,', source)
+        self.assertLess(source.index('if dup:'), source.index('extraction = extract_document('))
+
+    def test_existing_uploads_can_be_reprocessed_by_their_owner(self):
+        extract_function = next(
+            node for node in self.backend_ast.body
+            if isinstance(node, ast.FunctionDef) and node.name == "api_extract_resource"
+        )
+        source = ast.get_source_segment(self.backend, extract_function)
+        self.assertIn('if r["owner_id"] != current["id"]', source)
+        self.assertIn('extract_document(', source)
+        self.assertIn('SELECT file_data, preview_data FROM resources', source)
+        self.assertIn('if preview_data is None:', source)
+        self.assertIn('UPDATE resources SET extracted_text=%s, extracted_blocks=%s', source)
+        self.assertIn('extraction_truncated=%s', source)
+        self.assertIn('db().commit()', source)
+        self.assertIn('response.headers["Cache-Control"] = "private, no-store"', source)
+        self.assertIn('"needs_ocr"', source)
+
+    def test_document_extraction_schema_migrations_are_present(self):
+        for field in [
+            "extracted_blocks JSONB",
+            "extraction_status TEXT",
+            "extraction_method TEXT",
+            "extraction_warnings TEXT",
+            "extraction_truncated BOOLEAN",
+            "page_count INTEGER",
+        ]:
+            self.assertIn(field, self.backend)
+        self.assertIn('ALTER TABLE resources ADD COLUMN IF NOT EXISTS extracted_blocks', self.backend)
+        self.assertIn('ALTER TABLE resources ADD COLUMN IF NOT EXISTS extraction_truncated', self.backend)
+
+    def test_full_document_content_is_returned_only_for_reading_route(self):
+        site_function = next(
+            node for node in self.backend_ast.body
+            if isinstance(node, ast.FunctionDef) and node.name == "site_data"
+        )
+        source = ast.get_source_segment(self.backend, site_function)
+        self.assertIn('reading_view = path.endswith("/read")', source)
+        self.assertIn('payload["resource"]["reading_blocks"]', source)
+        self.assertIn('payload["resource"]["reading_text"]', source)
+        self.assertIn('"preview_available"', source)
+        self.assertIn('CASE WHEN %s THEN r.extracted_text ELSE LEFT(r.extracted_text, 16001) END', source)
+        self.assertIn("CASE WHEN %s THEN r.extracted_blocks ELSE '[]'::jsonb END", source)
+
+    def test_ods_conversion_has_libreoffice_calc_installed(self):
+        self.assertIn("libreoffice-calc", (ROOT / "Dockerfile").read_text(encoding="utf-8"))
+        self.assertIn("libreoffice-calc", (ROOT / "apt.txt").read_text(encoding="utf-8"))
+        self.assertIn("libreoffice-calc", (ROOT / "README.md").read_text(encoding="utf-8"))
+
+    def test_all_open_document_formats_use_the_converted_pdf_preview(self):
+        self.assertIn('CONVERTED_PREVIEW_EXTENSIONS = {"docx", "pptx", "rtf", "odt", "ods", "odp"}', self.backend)
+        preview_function = next(
+            node for node in self.backend_ast.body
+            if isinstance(node, ast.FunctionDef) and node.name == "preview"
+        )
+        source = ast.get_source_segment(self.backend, preview_function)
+        for extension in ["rtf", "odt", "ods", "odp"]:
+            self.assertIn(f"'{extension}'", source)
+
     def test_preview_fetches_binary_and_checks_access_in_one_query(self):
         preview_function = next(
             node for node in self.backend_ast.body

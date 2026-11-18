@@ -1,4 +1,7 @@
 libreoffice-writer
+libreoffice-calc
 libreoffice-impress
 fonts-liberation
 fonts-dejavu-core
+tesseract-ocr
+tesseract-ocr-eng

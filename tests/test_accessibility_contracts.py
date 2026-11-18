@@ -64,13 +64,39 @@ class AccessibilityContractTests(unittest.TestCase):
         self.assertNotIn('aria-label="Signed in as"', self.app)
         self.assertIn('className="react-user">{user.name}</span>', self.app)
 
+    def test_accessible_reader_renders_semantic_document_blocks(self):
+        self.assertIn('function DocumentBlocks({ blocks, fallbackText = "" })', self.app)
+        self.assertIn('<th scope="col"', self.app)
+        self.assertIn('<caption>{block.caption || "Document table"}</caption>', self.app)
+        self.assertIn('role="region" tabIndex={0} aria-label={`Scrollable table:', self.app)
+        self.assertIn('<ul>', self.app)
+        self.assertIn('path.endsWith("/read")&&data.resource', self.app)
+
+    def test_reader_controls_are_labelled_and_use_voxora_speech(self):
+        self.assertIn('label htmlFor="reader-text-size">Text size</label>', self.app)
+        self.assertIn('aria-valuetext={`${readerTextSize} percent`}', self.app)
+        self.assertIn('new Event("voxora:read-document")', self.app)
+        self.assertIn('new Event("voxora:stop-reading")', self.app)
+        self.assertIn('window.addEventListener("voxora:read-document", readDocument)', self.voice)
+        self.assertIn('window.addEventListener("voxora:stop-reading", stopDocument)', self.voice)
+        self.assertIn('This browser does not support speech output', self.voice)
+        self.assertIn('Speech output is muted', self.voice)
+
+    def test_reader_uses_full_extracted_text_without_duplicate_page_text(self):
+        self.assertIn('cached.resource?.reading_text || cached.resource?.text_excerpt', self.app)
+        self.assertIn('result.resource?.reading_text || result.resource?.text_excerpt', self.app)
+        self.assertIn('const readerContent = main?.querySelector(".react-document-reading-content")?.innerText || ""', self.voice)
+        self.assertIn('const readerStatus = main?.querySelector(".react-extraction-status")?.innerText || ""', self.voice)
+        self.assertIn('(readerContent || main?.innerText || document.body.innerText || documentText).trim()', self.voice)
+        self.assertIn('const maxReadCharacters = 40000', self.voice)
+
     def test_document_preview_has_named_frame_and_new_tab_alternative(self):
         self.assertIn('className="react-document-frame"', self.app)
         self.assertIn('title={(isPdf?', self.app)
         self.assertIn('aria-describedby="document-preview-help"', self.app)
         self.assertIn('target="_blank" rel="noopener noreferrer"', self.app)
         self.assertIn('Open preview in a new tab', self.app)
-        self.assertIn('scanned pages may require OCR', self.app)
+        self.assertIn('OCR and text extraction can misread words', self.app)
 
     def test_form_focus_indicator_is_solid_and_visible(self):
         self.assertIn('outline: 3px solid var(--react-teal);', self.css)

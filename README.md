@@ -22,6 +22,8 @@ Voxora Access is a voice-first digital accessibility and learning-resource platf
 - Provides embedded previews for PDF, DOCX/PPTX-converted PDF, TXT, MD and CSV resources when the required preview data is available.
 - Provides embedded previews for supported formats. The current upload pipeline does not populate extracted document text, so resource search is based on titles and descriptions; AI explanations of document contents depend on text made available through the current page or document viewer.
 - Includes resource discovery, a personal library, private sharing between existing accounts, and public/private visibility settings.
+- Extracts structured reading content from PDF, DOCX, PPTX, TXT, Markdown and CSV uploads. Scanned PDF pages can use local Tesseract OCR when the server's OCR engine and language data are installed.
+- Provides a text-first document reading view with semantic headings, lists and tables, adjustable text size, and a read-aloud control that uses Voxora's speech output.
 
 ### Accounts and resource permissions
 
@@ -49,13 +51,14 @@ Install the following:
 - Python 3.12 or later.
 - Node.js and npm.
 - PostgreSQL with an SSL-enabled connection, or a hosted PostgreSQL database such as Neon.
-- LibreOffice Writer and Impress if you want DOCX and PPTX uploads converted to PDF previews.
+- LibreOffice Writer, Calc and Impress if you want DOCX, PPTX, RTF and OpenDocument uploads converted to PDF previews and text extraction.
+- Tesseract OCR with the required language data (English is the default) if you want scanned PDF pages processed into selectable text.
 
 On Debian or Ubuntu, LibreOffice and the fonts used by the deployment image can be installed with:
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y libreoffice-writer libreoffice-impress fonts-liberation fonts-dejavu-core
+sudo apt-get install -y libreoffice-writer libreoffice-calc libreoffice-impress tesseract-ocr tesseract-ocr-eng fonts-liberation fonts-dejavu-core
 ```
 
 ### 2. Get the source code
@@ -115,6 +118,11 @@ Optional:
 
 - `VOXORA_MAX_UPLOAD_MB`: maximum upload size in megabytes; defaults to `20`.
 - `VOXORA_HTTPS`: set to `0` for local HTTP development. Use `1` when deployed behind HTTPS; the default is `1`.
+- `VOXORA_MAX_EXTRACTED_TEXT_CHARS`: maximum stored reading text per document; defaults to `200000`.
+- `VOXORA_MAX_DOCUMENT_PAGES`: maximum PDF pages processed; defaults to `250`.
+- `VOXORA_MAX_OCR_PAGES`: maximum sparse PDF pages sent to OCR per document; defaults to `6`.
+- `VOXORA_OCR_LANG`: Tesseract language code; defaults to `eng`.
+- `VOXORA_OCR_TIMEOUT_SECONDS`: OCR timeout per page; defaults to `5`.
 
 Generate a secret key with Python:
 
@@ -162,14 +170,14 @@ Voxora sends AI requests to Groq for conversational assistance and AI tool selec
 
 ## Quality checks
 
-Run the dependency-free source regression checks and Python syntax validation locally:
+Run the Python syntax validation and source/document-extraction regression checks locally:
 
 ```bash
-python -m compileall -q app.py tests
+python -m compileall -q app.py document_accessibility.py tests
 python -m unittest discover -s tests -v
 ```
 
-The GitHub Actions workflow in `.github/workflows/quality.yml` runs those checks, builds the production Vite frontend, and then runs a separate Chromium browser suite. The browser suite uses axe-core to check WCAG 2.2 AA and accessibility best-practice rules across public and authentication routes in both signed-in and signed-out states, plus workspace and document routes. It also checks skip-link focus, client-side route focus, persistent voice controls, form labels, document-preview alternatives, element-level horizontal overflow, voice-dock spacing and scroll-control overlap at common viewport widths. Browser-test dependencies are isolated under `tests/browser` and are not part of the production frontend dependencies.
+The GitHub Actions workflow in `.github/workflows/quality.yml` runs those checks, builds the production Vite frontend, and then runs a separate Chromium browser suite. The browser suite uses axe-core to check WCAG 2.2 AA and accessibility best-practice rules across public and authentication routes in both signed-in and signed-out states, plus workspace and document routes. It also checks skip-link focus, client-side route focus, persistent voice controls, form labels, document-preview alternatives, semantic document reading blocks, read-aloud/stop controls, element-level horizontal overflow, voice-dock spacing and scroll-control overlap at common viewport widths. Document extraction unit tests cover PDF, DOCX, PPTX, text, Markdown, CSV, RTF/OpenDocument conversion, image-description warnings, extraction limits and OCR fallback behavior. Browser-test dependencies are isolated under `tests/browser` and are not part of the production frontend dependencies.
 
 To run the browser suite locally after building the frontend, install its test dependencies and Chromium:
 
@@ -194,7 +202,11 @@ The repository includes a `Dockerfile` and `render.yaml` for deployment. The Ren
 - A browser cannot silently browse a student's computer or choose a local file. Voxora can open or focus the upload control, but the student must select the file in the native file picker.
 - Voxora does not fill password fields. Students enter their own credentials directly.
 - DOCX/PPTX conversion depends on LibreOffice and may not preserve every complex layout, font, animation or embedded object. The original upload remains available if conversion fails.
-- An embedded PDF preview is not automatically screen-reader accessible. Accessibility depends on the source document's text, structure, tags and reading order; scanned PDFs may require OCR.
+- An embedded PDF preview is not automatically screen-reader accessible. The text-first reading view is an alternative generated from extracted content; it does not add tags to, repair or certify the original PDF.
+- OCR can misrecognise characters and cannot reliably reconstruct complex reading order, mathematics, charts, diagrams or image descriptions. Verify OCR output against the original. The server limits OCR to a configurable number of sparse pages per document.
+- Voxora read-aloud currently reads up to the first 40,000 characters per request. The full extracted text remains available in the reading view for screen-reader and keyboard navigation, subject to the 200,000-character extraction limit.
+- DOCX and PPTX extraction preserves common headings, paragraphs, lists and tables, but some embedded objects, SmartArt, charts, equations, comments, tracked changes, speaker notes and complex layout may not be represented. RTF and OpenDocument formats are converted through LibreOffice PDF previews, so semantic structure may be flattened.
+- Existing uploads created before document extraction was introduced are marked as pending. The resource owner can use **Prepare / retry accessible text** on the resource page to process them.
 - Resource content and AI search require a signed-in account. Public visibility means visible to signed-in members, not anonymous visitors.
 - The current project is a prototype and has not undergone an independent security, privacy or accessibility audit. Review the privacy and legal pages, hosting configuration, retention practices and applicable requirements before production use.
 

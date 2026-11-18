@@ -49,16 +49,13 @@ async function preparePage(page, routePath = "/", signedOut = false) {
         }
         window.SpeechRecognition = TestSpeechRecognition;
         window.webkitSpeechRecognition = TestSpeechRecognition;
+        window.__voxoraSpeechOutput = [];
         window.SpeechSynthesisUtterance = class {
             constructor(text) { this.text = text; }
         };
         window.speechSynthesis = {
             cancel() {},
-            speak(utterance) {
-                if (typeof utterance.onend === "function") {
-                    window.setTimeout(() => utterance.onend(), 0);
-                }
-            },
+            speak(utterance) { window.__voxoraSpeechOutput.push(utterance.text); },
         };
         try {
             Object.defineProperty(navigator, "mediaDevices", {
@@ -105,6 +102,21 @@ async function preparePage(page, routePath = "/", signedOut = false) {
                 owner_name: demoUser.name,
                 text_excerpt: "A short sample document for browser testing.",
                 text_truncated: false,
+                reading_text: path.endsWith("/read") ? "Introduction\n\nA sample passage for assistive reading.\n\nFirst point\n\nSecond point\n\nTerm | Meaning\nAccess | Ability to use information" : undefined,
+                reading_truncated: false,
+                reading_blocks: path.endsWith("/read") ? [
+                    { type: "heading", level: 2, text: "Introduction" },
+                    { type: "paragraph", text: "A sample passage for assistive reading." },
+                    { type: "list_item", ordered: false, text: "First point" },
+                    { type: "list_item", ordered: false, text: "Second point" },
+                    { type: "table", caption: "Key terms", header_rows: 1, rows: [["Term", "Meaning"], ["Access", "Ability to use information"]] },
+                ] : [],
+                extraction_status: "partial",
+                extraction_method: "pypdf+ocr",
+                extraction_warnings: ["The source PDF tag order has not been independently verified."],
+                extraction_truncated: false,
+                preview_available: true,
+                page_count: 1,
                 is_owner: true,
                 in_library: false,
             };
@@ -209,6 +221,64 @@ test.describe("Voxora browser accessibility", () => {
         await expect(page.getByTitle("PDF preview of PDF: Accessible sample resource")).toBeVisible();
         await expect(page.getByRole("link", { name: "Open preview in a new tab" })).toBeVisible();
         await expect(page.getByRole("link", { name: "Download original" }).first()).toBeVisible();
+    });
+
+    test("accessible reading view preserves headings, lists and table headers", async ({ page }) => {
+        await preparePage(page, "/resource/41/read");
+        await expect(page.getByRole("heading", { level: 1, name: "Accessible sample resource" })).toBeVisible();
+        await expect(page.getByRole("heading", { level: 2, name: "Introduction" })).toBeVisible();
+        await expect(page.getByRole("list")).toBeVisible();
+        await expect(page.getByRole("table", { name: "Key terms" })).toBeVisible();
+        await expect(page.getByRole("columnheader", { name: "Term" })).toBeVisible();
+        await expect(page.getByRole("button", { name: "Read aloud with Voxora" })).toBeEnabled();
+        await expect(page.getByRole("slider", { name: "Text size" })).toBeVisible();
+    });
+
+    test("accessible reading view explains extraction limitations and links to the original", async ({ page }) => {
+        await preparePage(page, "/resource/41/read");
+        await expect(page.getByRole("heading", { name: "Text extracted with limitations" })).toBeVisible();
+        await expect(page.getByText("The source PDF tag order has not been independently verified.")).toBeVisible();
+        await expect(page.getByRole("link", { name: "Download original" })).toBeVisible();
+    });
+
+    test("reader buttons send document text to Voxora speech and can stop it", async ({ page }) => {
+        await preparePage(page, "/resource/41/read");
+        await page.getByRole("button", { name: "Read aloud with Voxora" }).click();
+        await expect.poll(() => page.evaluate(() => window.__voxoraSpeechOutput.join(" ")))
+            .toContain("A sample passage for assistive reading.");
+        await page.getByRole("button", { name: "Stop reading" }).click();
+        await expect(page.locator(".voxora-assistant-notice")).toContainText("Document reading stopped.");
+    });
+
+    test("document text scaling reflows without page-level horizontal overflow", async ({ page }) => {
+        await page.setViewportSize({ width: 320, height: 900 });
+        await preparePage(page, "/resource/41/read");
+        const slider = page.getByRole("slider", { name: "Text size" });
+        await slider.focus();
+        await page.keyboard.press("End");
+        await expect(slider).toHaveValue("180");
+        const dimensions = await page.evaluate(() => ({
+            viewport: document.documentElement.clientWidth,
+            document: document.documentElement.scrollWidth,
+        }));
+        expect(dimensions.document, JSON.stringify(dimensions)).toBeLessThanOrEqual(dimensions.viewport + 1);
+    });
+
+    test("resource owner can retry accessible text extraction", async ({ page }) => {
+        await preparePage(page, "/resource/41");
+        await page.route("**/api/resource/41/extract", async (route) => {
+            await route.fulfill({
+                status: 200,
+                contentType: "application/json",
+                body: JSON.stringify({
+                    status: "ready",
+                    message: "Accessible reading text is ready. Review any document notes before relying on it.",
+                    warnings: [],
+                }),
+            });
+        });
+        await page.getByRole("button", { name: "Prepare / retry accessible text" }).click();
+        await expect(page.getByRole("status").filter({ hasText: "Accessible reading text is ready" })).toBeVisible();
     });
 
     test("forms expose accessible labels", async ({ page }) => {

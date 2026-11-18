@@ -19,12 +19,15 @@ from flask import (
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from psycopg import connect as pg_connect
+from psycopg.types.json import Jsonb
 from psycopg_pool import ConnectionPool
+from document_accessibility import extract_document
 
 BASE = Path(__file__).resolve().parent
 DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
 MAX_MB = int(os.environ.get("VOXORA_MAX_UPLOAD_MB", "20"))
 ALLOWED = {"pdf", "docx", "pptx", "txt", "md", "rtf", "csv", "odt", "ods", "odp"}
+CONVERTED_PREVIEW_EXTENSIONS = {"docx", "pptx", "rtf", "odt", "ods", "odp"}
 if not DATABASE_URL:
     raise RuntimeError(
         "DATABASE_URL is required. Configure your Neon PostgreSQL connection string."
@@ -72,7 +75,7 @@ def now():
 
 
 def convert_office_to_pdf(file_data, original_name):
-    """Convert a DOCX/PPTX upload to a PDF preview using LibreOffice."""
+    """Convert a supported office document to a PDF preview using LibreOffice."""
     with tempfile.TemporaryDirectory(prefix="voxora-convert-") as temp_dir:
         source = Path(temp_dir) / secure_filename(original_name)
         output_dir = Path(temp_dir) / "converted"
@@ -112,7 +115,13 @@ def init():
     try:
         c.execute("""
   CREATE TABLE IF NOT EXISTS users(id BIGSERIAL PRIMARY KEY,name TEXT NOT NULL,email TEXT UNIQUE NOT NULL,password_hash TEXT NOT NULL,created_at TEXT NOT NULL);
-  CREATE TABLE IF NOT EXISTS resources(id BIGSERIAL PRIMARY KEY,owner_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,title TEXT NOT NULL,description TEXT NOT NULL DEFAULT '',original_name TEXT NOT NULL,stored_name TEXT UNIQUE NOT NULL,extension TEXT NOT NULL,mime_type TEXT NOT NULL,size_bytes BIGINT NOT NULL,sha256 TEXT NOT NULL,visibility TEXT NOT NULL CHECK(visibility IN ('public','private')),extracted_text TEXT NOT NULL DEFAULT '',file_data BYTEA NOT NULL,preview_data BYTEA,preview_sha256 TEXT,preview_size_bytes BIGINT,created_at TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS resources(id BIGSERIAL PRIMARY KEY,owner_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,title TEXT NOT NULL,description TEXT NOT NULL DEFAULT '',original_name TEXT NOT NULL,stored_name TEXT UNIQUE NOT NULL,extension TEXT NOT NULL,mime_type TEXT NOT NULL,size_bytes BIGINT NOT NULL,sha256 TEXT NOT NULL,visibility TEXT NOT NULL CHECK(visibility IN ('public','private')),extracted_text TEXT NOT NULL DEFAULT '',extracted_blocks JSONB NOT NULL DEFAULT '[]'::jsonb,extraction_status TEXT NOT NULL DEFAULT 'pending',extraction_method TEXT NOT NULL DEFAULT '',extraction_warnings TEXT NOT NULL DEFAULT '',extraction_truncated BOOLEAN NOT NULL DEFAULT FALSE,page_count INTEGER,file_data BYTEA NOT NULL,preview_data BYTEA,preview_sha256 TEXT,preview_size_bytes BIGINT,created_at TEXT NOT NULL);
+  ALTER TABLE resources ADD COLUMN IF NOT EXISTS extracted_blocks JSONB NOT NULL DEFAULT '[]'::jsonb;
+  ALTER TABLE resources ADD COLUMN IF NOT EXISTS extraction_status TEXT NOT NULL DEFAULT 'pending';
+  ALTER TABLE resources ADD COLUMN IF NOT EXISTS extraction_method TEXT NOT NULL DEFAULT '';
+  ALTER TABLE resources ADD COLUMN IF NOT EXISTS extraction_warnings TEXT NOT NULL DEFAULT '';
+  ALTER TABLE resources ADD COLUMN IF NOT EXISTS extraction_truncated BOOLEAN NOT NULL DEFAULT FALSE;
+  ALTER TABLE resources ADD COLUMN IF NOT EXISTS page_count INTEGER;
   ALTER TABLE resources ADD COLUMN IF NOT EXISTS preview_data BYTEA;
   ALTER TABLE resources ADD COLUMN IF NOT EXISTS preview_sha256 TEXT;
   ALTER TABLE resources ADD COLUMN IF NOT EXISTS preview_size_bytes BIGINT;
@@ -343,8 +352,7 @@ def resource(rid):
             SELECT
                 r.id, r.owner_id, r.title, r.description, r.original_name,
                 r.stored_name, r.extension, r.mime_type, r.size_bytes,
-                r.sha256, r.visibility, r.extracted_text, r.created_at,
-                u.name AS owner_name
+                r.sha256, r.visibility, r.created_at, u.name AS owner_name
             FROM resources r
             JOIN users u ON u.id = r.owner_id
             WHERE r.id = %s
@@ -462,20 +470,7 @@ def upload():
         if not file_data:
             flash("The selected file is empty.", "error")
             return render_template("upload.html")
-        preview_data = convert_office_to_pdf(file_data, original) if ext in {"docx", "pptx"} else None
         digest = hashlib.sha256(file_data).hexdigest()
-        preview_digest = (
-            hashlib.sha256(preview_data).hexdigest()
-            if preview_data is not None
-            else digest if ext in {"pdf", "txt", "md", "csv"}
-            else None
-        )
-        preview_size = (
-            len(preview_data)
-            if preview_data is not None
-            else len(file_data) if ext in {"pdf", "txt", "md", "csv"}
-            else None
-        )
         uid = user()["id"]
         dup = (
             db()
@@ -488,9 +483,32 @@ def upload():
         if dup:
             flash("A matching file is already available to you.", "info")
             return redirect(url_for("detail", rid=dup["id"]))
+        preview_data = (
+            convert_office_to_pdf(file_data, original)
+            if ext in CONVERTED_PREVIEW_EXTENSIONS
+            else None
+        )
+        extraction = extract_document(
+            file_data,
+            original,
+            ext,
+            preview_pdf=preview_data,
+        )
+        preview_digest = (
+            hashlib.sha256(preview_data).hexdigest()
+            if preview_data is not None
+            else digest if ext in {"pdf", "txt", "md", "csv"}
+            else None
+        )
+        preview_size = (
+            len(preview_data)
+            if preview_data is not None
+            else len(file_data) if ext in {"pdf", "txt", "md", "csv"}
+            else None
+        )
         try:
             db().execute(
-                "INSERT INTO resources(owner_id,title,description,original_name,stored_name,extension,mime_type,size_bytes,sha256,visibility,extracted_text,file_data,preview_data,preview_sha256,preview_size_bytes,created_at) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                "INSERT INTO resources(owner_id,title,description,original_name,stored_name,extension,mime_type,size_bytes,sha256,visibility,extracted_text,extracted_blocks,extraction_status,extraction_method,extraction_warnings,extraction_truncated,page_count,file_data,preview_data,preview_sha256,preview_size_bytes,created_at) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
                 (
                     uid,
                     title or Path(original).stem,
@@ -502,7 +520,13 @@ def upload():
                     len(file_data),
                     digest,
                     vis,
-                    "",
+                    extraction["text"],
+                    Jsonb(extraction["blocks"]),
+                    extraction["status"],
+                    extraction["method"],
+                    "\n".join(extraction["warnings"]),
+                    extraction["truncated"],
+                    extraction["page_count"],
                     file_data,
                     preview_data,
                     preview_digest,
@@ -514,10 +538,17 @@ def upload():
         except Exception:
             db().rollback()
             raise
-        if ext in {"docx", "pptx"} and preview_data is None:
-            flash("Your original file was uploaded, but its PDF preview could not be generated. You can still download the original.", "info")
+        messages = []
+        if extraction["status"] == "ready":
+            messages.append(("success", "Your resource was uploaded and its accessible reading text is ready."))
+        elif extraction["text"]:
+            messages.append(("info", "Your resource was uploaded, but some content may be missing from its accessible reading text. Review the document notes."))
         else:
-            flash("Your resource has been uploaded.", "success")
+            messages.append(("info", "Your resource was uploaded, but readable text could not be prepared. Open the resource to review the extraction status."))
+        if ext in CONVERTED_PREVIEW_EXTENSIONS and preview_data is None:
+            messages.append(("info", "The original file is available, but its in-page PDF preview could not be generated."))
+        for category, message in messages:
+            flash(message, category)
         return redirect(url_for("my_resources"))
     return render_template("upload.html")
 
@@ -557,9 +588,9 @@ def preview(rid):
             """
             SELECT
                 r.extension, r.original_name,
-                CASE WHEN r.extension IN ('docx', 'pptx')
+                CASE WHEN r.extension IN ('docx', 'pptx', 'rtf', 'odt', 'ods', 'odp')
                     THEN r.preview_sha256 ELSE r.sha256 END AS preview_etag,
-                CASE WHEN r.extension IN ('docx', 'pptx')
+                CASE WHEN r.extension IN ('docx', 'pptx', 'rtf', 'odt', 'ods', 'odp')
                     THEN r.preview_size_bytes ELSE r.size_bytes END AS preview_size
             """ + access_sql,
             params,
@@ -569,9 +600,9 @@ def preview(rid):
             """
             SELECT
                 r.extension, r.original_name,
-                CASE WHEN r.extension IN ('docx', 'pptx')
+                CASE WHEN r.extension IN ('docx', 'pptx', 'rtf', 'odt', 'ods', 'odp')
                     THEN r.preview_sha256 ELSE r.sha256 END AS preview_etag,
-                CASE WHEN r.extension IN ('docx', 'pptx')
+                CASE WHEN r.extension IN ('docx', 'pptx', 'rtf', 'odt', 'ods', 'odp')
                     THEN r.preview_data ELSE r.file_data END AS preview_payload
             """ + access_sql,
             params,
@@ -585,6 +616,10 @@ def preview(rid):
         "pdf": "application/pdf",
         "docx": "application/pdf",
         "pptx": "application/pdf",
+        "rtf": "application/pdf",
+        "odt": "application/pdf",
+        "ods": "application/pdf",
+        "odp": "application/pdf",
         "txt": "text/plain; charset=utf-8",
         "md": "text/plain; charset=utf-8",
         "csv": "text/plain; charset=utf-8",
@@ -595,17 +630,17 @@ def preview(rid):
 
     preview_name = (
         f"{Path(preview_row['original_name']).stem}.pdf"
-        if extension in {"docx", "pptx"}
+        if extension in CONVERTED_PREVIEW_EXTENSIONS
         else preview_row["original_name"]
     )
     preview_digest = preview_row["preview_etag"]
     preview_size = preview_row.get("preview_size") if metadata_only else None
     preview_data = preview_row.get("preview_payload") if not metadata_only else None
 
-    # Existing DOCX/PPTX records predate preview_sha256. Backfill the digest
-    # once, on first access, so later revalidation can avoid loading the blob.
+    # Older converted-document records may predate preview metadata. Backfill
+    # the digest once so later revalidation can avoid loading the PDF blob.
     if metadata_only and preview_size is None:
-        if extension not in {"docx", "pptx"}:
+        if extension not in CONVERTED_PREVIEW_EXTENSIONS:
             abort(404)
         # Legacy converted previews have no stored size/hash yet. Load and
         # backfill this metadata once; subsequent HEAD/304 checks stay small.
@@ -660,28 +695,28 @@ def preview(rid):
             payload_row = timed_fetchone(
                 """
                 SELECT
-                    CASE WHEN r.extension IN ('docx', 'pptx')
+                    CASE WHEN r.extension IN ('docx', 'pptx', 'rtf', 'odt', 'ods', 'odp')
                         THEN r.preview_data ELSE r.file_data END AS preview_payload,
-                    CASE WHEN r.extension IN ('docx', 'pptx')
+                    CASE WHEN r.extension IN ('docx', 'pptx', 'rtf', 'odt', 'ods', 'odp')
                         THEN r.preview_sha256 ELSE r.sha256 END AS preview_etag
                 """ + access_sql,
                 params,
             )
             if not payload_row or payload_row["preview_payload"] is None:
-                if extension in {"docx", "pptx"}:
+                if extension in CONVERTED_PREVIEW_EXTENSIONS:
                     abort(415, "A PDF preview is not available for this document.")
                 abort(404)
             preview_data = bytes(payload_row["preview_payload"])
             preview_digest = payload_row["preview_etag"]
 
         if not preview_data:
-            if extension in {"docx", "pptx"}:
+            if extension in CONVERTED_PREVIEW_EXTENSIONS:
                 abort(415, "A PDF preview is not available for this document.")
             abort(404)
 
         if not preview_digest:
             preview_digest = hashlib.sha256(preview_data).hexdigest()
-            if extension in {"docx", "pptx"}:
+            if extension in CONVERTED_PREVIEW_EXTENSIONS:
                 timed_execute(
                     "UPDATE resources SET preview_sha256 = COALESCE(preview_sha256, %s), preview_size_bytes = COALESCE(preview_size_bytes, %s) WHERE id = %s",
                     (preview_digest, len(preview_data), rid),
@@ -728,6 +763,75 @@ def download(rid):
         as_attachment=True,
         download_name=r["original_name"],
     )
+    response.headers["Cache-Control"] = "private, no-store"
+    return response
+
+
+@app.post("/api/resource/<int:rid>/extract")
+@login_required
+def api_extract_resource(rid):
+    current = user()
+    r = resource(rid)
+    if not accessible(r, current):
+        abort(404)
+    if r["owner_id"] != current["id"]:
+        return jsonify({"error": "Only the resource owner can prepare its accessible reading text."}), 403
+
+    stored = timed_fetchone(
+        "SELECT file_data, preview_data FROM resources WHERE id=%s AND owner_id=%s",
+        (rid, current["id"]),
+    )
+    if not stored or stored["file_data"] is None:
+        abort(404)
+    file_data = bytes(stored["file_data"])
+    extension = (r["extension"] or "").lower()
+    preview_data = None
+    if extension in CONVERTED_PREVIEW_EXTENSIONS:
+        preview_data = bytes(stored["preview_data"]) if stored["preview_data"] else None
+        if preview_data is None:
+            preview_data = convert_office_to_pdf(file_data, r["original_name"])
+    extraction = extract_document(
+        file_data,
+        r["original_name"],
+        extension,
+        preview_pdf=preview_data,
+    )
+    preview_digest = hashlib.sha256(preview_data).hexdigest() if preview_data else None
+    preview_size = len(preview_data) if preview_data else None
+    timed_execute(
+        """UPDATE resources SET extracted_text=%s, extracted_blocks=%s,
+           extraction_status=%s, extraction_method=%s, extraction_warnings=%s,
+           extraction_truncated=%s, page_count=%s,
+           preview_data=COALESCE(%s, preview_data),
+           preview_sha256=COALESCE(%s, preview_sha256),
+           preview_size_bytes=COALESCE(%s, preview_size_bytes)
+           WHERE id=%s AND owner_id=%s""",
+        (
+            extraction["text"], Jsonb(extraction["blocks"]), extraction["status"],
+            extraction["method"], "\n".join(extraction["warnings"]),
+            extraction["truncated"], extraction["page_count"],
+            preview_data, preview_digest, preview_size,
+            rid, current["id"],
+        ),
+    )
+    db().commit()
+    if extraction["status"] == "ready":
+        message = "Accessible reading text is ready. Review any document notes before relying on it."
+    elif extraction["status"] == "partial":
+        message = "Text was extracted with limitations. Review the document notes and original file."
+    elif extraction["status"] == "needs_ocr":
+        message = "No selectable text was found. OCR could not prepare readable text on this server."
+    else:
+        message = "No readable text could be extracted. The original upload is retained for download."
+    response = jsonify({
+        "status": extraction["status"],
+        "method": extraction["method"],
+        "warnings": extraction["warnings"],
+        "page_count": extraction["page_count"],
+        "text_length": len(extraction["text"]),
+        "truncated": extraction["truncated"],
+        "message": message,
+    })
     response.headers["Cache-Control"] = "private, no-store"
     return response
 
@@ -964,11 +1068,19 @@ def site_data():
         match = re.match(r"^/resource/(\d+)(?:/read)?$", path)
         if match:
             uid = current["id"]
+            reading_view = path.endswith("/read")
             r = timed_fetchone(
                 """
                 SELECT
                     r.id, r.owner_id, r.title, r.description, r.extension,
-                    r.size_bytes, r.visibility, r.extracted_text,
+                    r.size_bytes, r.visibility,
+                    CASE WHEN %s THEN r.extracted_text ELSE LEFT(r.extracted_text, 16001) END AS extracted_text,
+                    length(r.extracted_text) > 16000 AS text_truncated,
+                    CASE WHEN %s THEN r.extracted_blocks ELSE '[]'::jsonb END AS extracted_blocks,
+                    r.extraction_status, r.extraction_method,
+                    r.extraction_warnings, r.extraction_truncated, r.page_count,
+                    CASE WHEN r.extension IN ('docx', 'pptx', 'rtf', 'odt', 'ods', 'odp')
+                        THEN r.preview_data IS NOT NULL ELSE TRUE END AS preview_available,
                     u.name AS owner_name,
                     EXISTS (
                         SELECT 1 FROM library l
@@ -986,7 +1098,7 @@ def site_data():
                       )
                   )
                 """,
-                (uid, int(match.group(1)), uid, uid),
+                (reading_view, reading_view, uid, int(match.group(1)), uid, uid),
             )
             if not r:
                 abort(404)
@@ -997,10 +1109,22 @@ def site_data():
                 "visibility": r["visibility"], "owner_id": r["owner_id"],
                 "owner_name": r["owner_name"],
                 "text_excerpt": extracted_text[:16000],
-                "text_truncated": len(extracted_text) > 16000,
+                "text_truncated": bool(r["text_truncated"]),
+                "extraction_status": r["extraction_status"] or "pending",
+                "extraction_method": r["extraction_method"] or "",
+                "extraction_warnings": [
+                    line for line in (r["extraction_warnings"] or "").splitlines() if line.strip()
+                ],
+                "page_count": r["page_count"],
+                "extraction_truncated": bool(r["extraction_truncated"]),
+                "preview_available": bool(r["preview_available"]),
                 "is_owner": uid == r["owner_id"],
                 "in_library": bool(r["in_library"]),
             }
+            if reading_view:
+                payload["resource"]["reading_text"] = extracted_text[:200000]
+                payload["resource"]["reading_truncated"] = bool(r["extraction_truncated"])
+                payload["resource"]["reading_blocks"] = r["extracted_blocks"] or []
     response = jsonify(payload)
     response.headers["Cache-Control"] = "private, no-store"
     return response

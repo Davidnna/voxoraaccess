@@ -21,8 +21,9 @@ endblock %} {% block content %}
             <span class="feature-number">READING</span>
             <h3>Listen to extracted text</h3>
             <p>
-                The reading view can use browser speech synthesis, with playback
-                controls and a speed setting where supported.
+                The document reading view preserves common headings, lists and
+                tables, supports text-size adjustment and can be read aloud with
+                Voxora's speech output.
             </p>
         </article>
         <article class="feature-card">
@@ -46,12 +47,17 @@ endblock %} {% block content %}
                 tables or original reading order.
             </li>
             <li>
-                Scanned PDFs may not contain machine-readable text and may
-                require OCR.
+                Scanned PDF pages can be processed with OCR, but recognition can
+                misread words and depends on scan quality and available language data.
             </li>
             <li>
-                Some document formats are accepted for storage but do not
-                currently have text extraction implemented.
+                RTF and OpenDocument formats are converted through PDF before
+                extraction, so tables, slide order and semantic structure may be flattened.
+            </li>
+            <li>
+                Extracted text does not automatically add tags to or repair the
+                original PDF. Charts, equations, diagrams and missing image descriptions
+                may still require manual review.
             </li>
         </ul>
         <p class="policy-note">

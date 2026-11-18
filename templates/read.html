@@ -9,7 +9,8 @@
         <p class="eyebrow">Accessible reading view</p>
         <h1>{{resource.title}}</h1>
         <p class="muted">
-            Extraction can change layout and omit diagrams or images.
+            Extraction can change layout and omit diagrams, images or complex tables.
+            This text-first view does not repair or certify the original file.
         </p>
     </div>
     <a class="btn outline" href="{{url_for('download',rid=resource.id)}}"
