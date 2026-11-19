@@ -38,14 +38,11 @@ const signedOutRoutes = [
 ];
 
 async function expandVoiceDock(page) {
-    const controls = page.getByRole("region", { name: "Voxora controls" });
-    const expand = controls.getByRole("button", { name: "Voxora controls" });
-    if (await expand.count()) await expand.click();
-    return controls;
+    return page.getByRole("region", { name: "Voxora controls" });
 }
 
 async function preparePage(page, routePath = "/", signedOut = false, options = {}) {
-    await page.addInitScript(({ speechBehavior, welcome }) => {
+    await page.addInitScript(({ speechBehavior, welcome, echoCancellationSetting }) => {
         window.voxoraWelcomeEnabled = Boolean(welcome);
         window.__voxoraRecognitionInstances = [];
         class TestSpeechRecognition {
@@ -66,9 +63,9 @@ async function preparePage(page, routePath = "/", signedOut = false, options = {
                 this.started = false;
                 this.onend?.();
             }
-            emit(transcript) {
+            emit(transcript, isFinal = true) {
                 const result = [{ transcript }];
-                result.isFinal = true;
+                result.isFinal = Boolean(isFinal);
                 this.onresult?.({ resultIndex: 0, results: [result] });
             }
         }
@@ -102,7 +99,7 @@ async function preparePage(page, routePath = "/", signedOut = false, options = {
             value: {
                 getUserMedia: async (constraints) => {
                     window.__voxoraGetUserMediaConstraints = constraints;
-                    const track = { getSettings: () => ({ echoCancellation: true }), stop() {} };
+                    const track = { getSettings: () => ({ echoCancellation: echoCancellationSetting !== false }), stop() {} };
                     return { getAudioTracks: () => [track], getTracks: () => [track] };
                 },
             },
@@ -138,7 +135,7 @@ async function preparePage(page, routePath = "/", signedOut = false, options = {
                 }, 0);
             },
         };
-    }, { speechBehavior: options.speechBehavior || "success", welcome: Boolean(options.welcome) });
+    }, { speechBehavior: options.speechBehavior || "success", welcome: Boolean(options.welcome), echoCancellationSetting: options.echoCancellationSetting });
 
     await page.route("**/api/site?*", async (route) => {
         const url = new URL(route.request().url());
@@ -277,6 +274,7 @@ test.describe("Voxora browser accessibility", () => {
         await expect(controls).toBeVisible();
         const enable = controls.getByRole("button", { name: "Enable microphone" });
         const stop = controls.getByRole("button", { name: "Stop speaking" });
+        await expect(enable).toHaveCount(1);
         await expect(enable).toBeVisible();
         await expect(stop).toBeVisible();
         await expect(controls.getByRole("button", { name: "Test speaker" })).toHaveCount(0);
@@ -307,18 +305,53 @@ test.describe("Voxora browser accessibility", () => {
             currentlyListening: window.__voxoraRecognitionInstances.at(-1)?.started,
         }));
         expect(recognitionAtPlayback).toEqual({ activeAtSpeechStart: true, currentlyListening: true });
-        await expect(controls.getByRole("status").first()).toContainText("Speaking · ready for interruption");
+        await expect(controls.getByRole("status").first()).toHaveText("Speaking");
 
-        // A recognition transcript that resembles a command is ignored unless
-        // the echo-cancelled monitor detects a real near-end voice signal.
-        await page.evaluate(() => window.__voxoraRecognitionInstances.at(-1)?.emit("go to dashboard"));
+        // Even with a strong microphone signal, a transcript matching the
+        // active spoken passage is treated as Voxora echo, not a user command.
+        await page.evaluate(() => { window.__voxoraMicLevel = 0.08; });
+        await page.waitForTimeout(240);
+        await page.evaluate(() => window.__voxoraRecognitionInstances.at(-1)?.emit("Introduction"));
+        await expect(page).toHaveURL(/\/resource\/41\/read$/);
+        await page.evaluate(() => window.__voxoraRecognitionInstances.at(-1)?.emit("A sample passage for assistive reading"));
         await expect(page).toHaveURL(/\/resource\/41\/read$/);
 
-        await page.evaluate(() => { window.__voxoraMicLevel = 0.08; });
-        await page.waitForTimeout(180);
-        await page.evaluate(() => window.__voxoraRecognitionInstances.at(-1)?.emit("go to dashboard"));
+        // A different near-end phrase is accepted and interrupts playback.
+        await page.evaluate(() => window.__voxoraRecognitionInstances.at(-1)?.emit("Voxora, go to dashboard"));
         await expect(page).toHaveURL(/\/dashboard$/);
         await expect.poll(() => page.evaluate(() => window.__voxoraSpeechCancelCount)).toBeGreaterThan(0);
+    });
+
+    test("a delayed final transcript is still checked against the speech Voxora just interrupted", async ({ page }) => {
+        await preparePage(page, "/resource/41/read", false, { speechBehavior: "hold" });
+        const controls = await expandVoiceDock(page);
+        await controls.getByRole("button", { name: "Enable microphone" }).click();
+        await expect.poll(() => page.evaluate(() => window.__voxoraRecognitionInstances.at(-1)?.started)).toBe(true);
+        await page.getByRole("button", { name: "Read aloud with Voxora" }).click();
+        await page.waitForFunction(() => window.__voxoraSpeechCallCount === 1 && window.__voxoraReleaseSpeech);
+        await page.evaluate(() => { window.__voxoraMicLevel = 0.08; });
+        await page.waitForTimeout(240);
+
+        // A changed interim hypothesis can briefly look like user speech.
+        // The final hypothesis must still be checked against the cancelled TTS.
+        await page.evaluate(() => window.__voxoraRecognitionInstances.at(-1)?.emit("unrelated interim phrase", false));
+        await expect.poll(() => page.evaluate(() => window.__voxoraSpeechCancelCount)).toBeGreaterThan(0);
+        await page.evaluate(() => window.__voxoraRecognitionInstances.at(-1)?.emit("A sample passage for assistive reading", true));
+        await expect(page).toHaveURL(/\/resource\/41\/read$/);
+    });
+
+    test("speech recognition pauses during playback when echo cancellation is unavailable", async ({ page }) => {
+        await preparePage(page, "/resource/41/read", false, { speechBehavior: "hold", echoCancellationSetting: false });
+        const controls = await expandVoiceDock(page);
+        await controls.getByRole("button", { name: "Enable microphone" }).click();
+        await expect.poll(() => page.evaluate(() => window.__voxoraRecognitionInstances.at(-1)?.started)).toBe(true);
+        await page.getByRole("button", { name: "Read aloud with Voxora" }).click();
+        await page.waitForFunction(() => window.__voxoraSpeechCallCount === 1 && window.__voxoraReleaseSpeech);
+        const activeAtPlayback = await page.evaluate(() => window.__voxoraSpeechRecognitionWasActiveAtSpeech[0]);
+        expect(activeAtPlayback).toBe(false);
+        await expect(controls.getByRole("status").first()).toHaveText("Speaking");
+        await page.evaluate(() => window.__voxoraReleaseSpeech?.());
+        await expect.poll(() => page.evaluate(() => window.__voxoraRecognitionInstances.at(-1)?.started)).toBe(true);
     });
 
     test("a spoken stop command interrupts Voxora without requiring the dock button", async ({ page }) => {
@@ -338,7 +371,7 @@ test.describe("Voxora browser accessibility", () => {
     test("welcome retries after the browser blocks automatic speech until a user gesture", async ({ page }) => {
         await preparePage(page, "/", false, { welcome: true, speechBehavior: "blocked-once" });
         await page.waitForFunction(() => window.__voxoraSpeechCallCount === 1);
-        await expect(page.getByRole("status").filter({ hasText: "Voxora could not start the welcome audio automatically" })).toBeVisible();
+        await expect(page.getByRole("status").filter({ hasText: "Voxora couldn't start automatically" })).toBeVisible();
         await expect(page.getByRole("region", { name: "Voxora controls" }).getByRole("status")).not.toContainText("Speaking");
         await page.locator("#main-content h1").click();
         await expect(page.getByRole("button", { name: "Play welcome" })).toHaveCount(0);
@@ -348,18 +381,20 @@ test.describe("Voxora browser accessibility", () => {
         expect(spoken[1]).toContain("Hello, welcome to Voxora Access");
     });
 
-    test("compact footer controls do not expose a welcome action and retry welcome on a normal control interaction", async ({ page }) => {
+    test("full voice controls remain visible at the footer and retry a blocked welcome on enable", async ({ page }) => {
         await preparePage(page, "/about", false, { welcome: true, speechBehavior: "blocked-once" });
         await page.waitForFunction(() => window.__voxoraSpeechCallCount === 1);
         await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
-        const controlsToggle = page.getByRole("button", { name: "Voxora controls" });
-        await expect(controlsToggle).toBeVisible();
+        const controls = page.getByRole("region", { name: "Voxora controls" });
+        await expect(controls.getByRole("button", { name: "Enable microphone" })).toBeVisible();
+        await expect(controls.getByRole("button", { name: "Stop speaking" })).toBeVisible();
+        await expect(page.getByRole("button", { name: "Voxora controls" })).toHaveCount(0);
+        await expect(page.getByRole("button", { name: "Collapse controls" })).toHaveCount(0);
         await expect(page.getByRole("button", { name: "Play welcome" })).toHaveCount(0);
         await expect(page.getByRole("button", { name: "Test speaker" })).toHaveCount(0);
-        await controlsToggle.click();
+        await controls.getByRole("button", { name: "Enable microphone" }).click();
         await page.waitForFunction(() => window.__voxoraSpeechCallCount === 2);
-        await expect(page.getByRole("button", { name: "Collapse controls" })).toBeVisible();
-        await expect(page.getByRole("button", { name: "Play welcome" })).toHaveCount(0);
+        await expect(page.getByRole("button", { name: "Collapse controls" })).toHaveCount(0);
     });
 
     test("welcome is attempted again after a full site reload in the same tab", async ({ page }) => {
@@ -382,20 +417,26 @@ test.describe("Voxora browser accessibility", () => {
         expect(spoken).toContain("A sample passage for assistive reading");
     });
 
-    test("footer has no trailing body spacer and the dock collapses at the footer", async ({ page }) => {
+    test("footer has no trailing body spacer, keeps full controls visible and displays the logo", async ({ page }) => {
         await preparePage(page, "/about");
         await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
-        await expect(page.locator(".voxora-control-dock")).toHaveClass(/is-footer-visible/);
-        await expect(page.getByRole("button", { name: "Voxora controls" })).toBeVisible();
-        await page.getByRole("button", { name: "Voxora controls" }).click();
-        await expect(page.getByRole("button", { name: "Collapse controls" })).toBeVisible();
+        const dock = page.locator(".voxora-control-dock");
+        await expect(dock).toHaveClass(/is-footer-visible/);
+        await expect(dock.getByRole("button", { name: "Enable microphone" })).toBeVisible();
+        await expect(dock.getByRole("button", { name: "Stop speaking" })).toBeVisible();
+        await expect(page.getByRole("button", { name: "Collapse controls" })).toHaveCount(0);
+        await expect(page.getByRole("img", { name: "Voxora Access logo" })).toBeVisible();
+        await expect.poll(() => page.locator(".react-footer-logo").evaluate((image) => image.complete && image.naturalWidth > 0)).toBe(true);
         const metrics = await page.evaluate(() => ({
             bodyPadding: getComputedStyle(document.body).paddingBottom,
             footerBottom: document.querySelector(".react-site-footer").getBoundingClientRect().bottom + window.scrollY,
+            footerTop: document.querySelector(".react-site-footer").getBoundingClientRect().top,
+            dockBottom: document.querySelector(".voxora-control-dock").getBoundingClientRect().bottom,
             documentHeight: document.documentElement.scrollHeight,
         }));
         expect(metrics.bodyPadding).toBe("0px");
         expect(Math.abs(metrics.documentHeight - metrics.footerBottom)).toBeLessThanOrEqual(2);
+        expect(metrics.dockBottom).toBeLessThan(metrics.footerTop);
     });
 
     test("document preview has a title and a non-embedded alternative", async ({ page }) => {

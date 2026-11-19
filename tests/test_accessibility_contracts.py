@@ -146,6 +146,7 @@ class AccessibilityContractTests(unittest.TestCase):
 
     def test_voice_status_does_not_announce_each_cooldown_second(self):
         self.assertIn('role="status" aria-live="polite" aria-atomic="true"', self.voice)
+        self.assertIn('{retrySeconds > 0 ? "Please wait"', self.voice)
         self.assertIn('{retrySeconds > 0 && <span aria-hidden="true">· {retrySeconds}s</span>}', self.voice)
 
     def test_reduced_motion_preferences_are_respected(self):
@@ -171,7 +172,7 @@ class AccessibilityContractTests(unittest.TestCase):
         self.assertIn('navigator.mediaDevices.getUserMedia({', self.voice)
         self.assertIn('echoCancellation: true, noiseSuppression: true, autoGainControl: true', self.voice)
         self.assertIn('const recentUserVoice = echoMonitorReadyRef.current && Date.now() <= userVoiceUntilRef.current', self.voice)
-        self.assertIn('if (!recentUserVoice) continue;', self.voice)
+        self.assertIn('if (!recentUserVoice || isLikelySpeechEcho(transcript)) continue;', self.voice)
         self.assertIn('interruptSpeechRef.current?.({ userBargeIn: true });', self.voice)
         self.assertIn('recognition.onend = () => {', self.voice)
         self.assertIn('if (recognitionRef.current !== recognition) return;', self.voice)
@@ -179,8 +180,12 @@ class AccessibilityContractTests(unittest.TestCase):
         self.assertIn('ignoreRecognitionResultsRef.current = !echoAwareBargeIn', self.voice)
         self.assertIn('if (speakingRef.current && !echoMonitorReadyRef.current)', self.voice)
         self.assertIn('waitForRecognitionToStop().then(beginSpeechQueue)', self.voice)
-        self.assertIn('Voxora is speaking. You can interrupt at any time by speaking.', self.voice)
-        self.assertIn('settings.echoCancellation === false', self.voice)
+        self.assertIn('settings.echoCancellation !== true', self.voice)
+        self.assertIn('now - voiceStartRef.current >= 180', self.voice)
+        self.assertIn('const isLikelySpeechEcho = (transcript, speechTextOverride = "") => {', self.voice)
+        self.assertIn('overlap >= 0.82', self.voice)
+        self.assertIn('currentUtteranceTextRef.current', self.voice)
+        self.assertIn('rawText.trim().replace(/^(?:hey\\s+)?voxora[,. ]+/i, "")', self.voice)
 
     def test_recognition_start_failure_resets_state(self):
         start_block = self.voice.split('const startListening = () => {', 1)[1].split('const resumeListening', 1)[0]
@@ -286,19 +291,24 @@ class AccessibilityContractTests(unittest.TestCase):
         self.assertIn('#voxora-app-root .react-site-footer{', self.css)
         self.assertIn("#voxora-app-root .react-site-footer{padding-bottom:24px}", self.css)
         self.assertNotIn("padding-bottom:calc(24px + var(--voxora-control-dock-height", self.css)
-        self.assertIn(".voxora-control-dock.is-footer-visible:not(.is-expanded)", self.css)
-        self.assertIn("className=\"voxora-footer-toggle\"", self.voice)
+        self.assertIn(".voxora-control-dock.is-footer-visible{bottom:calc(var(--voxora-footer-height", self.css)
+        self.assertNotIn("voxora-footer-toggle", self.voice)
+        self.assertNotIn("dockExpanded", self.voice)
+        self.assertNotIn("is-expanded", self.css)
+        self.assertIn('className="react-footer-identity"', self.app)
+        self.assertIn('src="/static/img/voxora-mark.svg"', self.app)
         self.assertNotIn('body{padding-bottom:calc', self.css)
         self.assertNotIn('bottom: calc(10.25rem + env(safe-area-inset-bottom))', self.css)
 
     def test_speech_status_tracks_browser_playback_and_reports_failures(self):
         self.assertIn('utterance.onstart = () => {', self.voice)
-        self.assertIn('setNotice(echoAwareBargeIn', self.voice)
-        self.assertIn('Voxora is speaking. You can interrupt at any time by speaking.', self.voice)
+        self.assertIn('setNotice("Voxora is speaking.")', self.voice)
+        self.assertNotIn('ready for interruption', self.voice)
+        self.assertNotIn('microphone paused', self.voice)
         self.assertIn('utterance.onerror = (event) => {', self.voice)
         self.assertIn('fail(event?.error || "speech error")', self.voice)
         self.assertIn('speechWatchdogRef.current = window.setTimeout', self.voice)
-        self.assertIn("Preparing Voxora's spoken response…", self.voice)
+        self.assertIn('setNotice("Preparing audio…")', self.voice)
 
     def test_welcome_is_retried_after_autoplay_block_and_replays_on_new_page_load(self):
         self.assertNotIn('WELCOME_SESSION_KEY', self.voice)
@@ -312,7 +322,8 @@ class AccessibilityContractTests(unittest.TestCase):
         self.assertNotIn('Play welcome', self.voice)
         self.assertIn('retryPendingSpeechFromGesture', self.voice)
         self.assertIn('welcomePendingRef.current = true', self.voice)
-        self.assertIn('classList.contains("voxora-footer-toggle")', self.voice)
+        self.assertIn('classList.contains("voxora-dock-primary")', self.voice)
+        self.assertNotIn('voxora-footer-toggle', self.voice)
 
     def test_document_reading_uses_all_extracted_text_instead_of_a_40k_prefix(self):
         self.assertNotIn("const maxReadCharacters = 40000", self.voice)
@@ -326,9 +337,11 @@ class AccessibilityContractTests(unittest.TestCase):
         self.assertIn('if (recognitionListeningRef.current && !echoAwareBargeIn)', speech_block)
         self.assertIn('waitForRecognitionToStop().then(beginSpeechQueue)', speech_block)
         self.assertIn('resumeListening(echoAwareBargeIn ? 350 : 900)', speech_block)
-        self.assertIn('if (!recentUserVoice) continue;', self.voice)
+        self.assertIn('if (!recentUserVoice || isLikelySpeechEcho(transcript)) continue;', self.voice)
         self.assertIn('interruptSpeechRef.current?.({ userBargeIn: true });', self.voice)
         self.assertIn('const microphoneMonitorRef = useRef(', self.voice)
+        self.assertIn('settings.echoCancellation !== true', self.voice)
+        self.assertIn('recentSpeechSegmentsRef.current', self.voice)
         self.assertNotIn('echoCancellationRef', self.voice)
 
     def test_microphone_mute_is_independent_of_speech_output(self):
@@ -338,12 +351,20 @@ class AccessibilityContractTests(unittest.TestCase):
         self.assertNotIn('if (mutedRef.current) return', speak_block)
         self.assertIn('Microphone mute affects input only. It must never disable speaker output.', speak_block)
         self.assertNotIn('interruptSpeech()', mute_block)
-        self.assertIn('Voxora can still speak', mute_block)
+        self.assertIn('setNotice("Microphone muted.")', mute_block)
+
+    def test_voice_controls_hide_internal_audio_and_provider_details(self):
+        self.assertNotIn("ready for interruption", self.voice.lower())
+        self.assertNotIn("echo-aware listening", self.voice.lower())
+        self.assertNotIn("ai cooldown", self.voice.lower())
+        self.assertNotIn("groq did not provide", self.voice.lower())
+        self.assertNotIn("voxora-footer-toggle", self.voice)
 
     def test_microphone_permission_is_requested_only_after_a_user_action(self):
         self.assertNotIn('setTimeout(() => startListening(), 500)', self.voice)
         self.assertIn('permission?.state === "granted"', self.voice)
-        self.assertIn('onClick={startListening}', self.voice)
+        self.assertIn('onClick={() => (muted || !active) ? startListening() : mute()}', self.voice)
+        self.assertIn('className="voxora-dock-primary voxora-microphone-toggle"', self.voice)
 
 
 if __name__ == "__main__":

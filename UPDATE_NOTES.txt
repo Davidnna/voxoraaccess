@@ -1,3 +1,58 @@
+VOXORA ACCESS — V24 VOICE ECHO CORRECTION AND UI SIMPLIFICATION
+
+This update corrects the V23 self-echo regression while retaining voice interruption on browsers that confirm echo cancellation. It also removes technical status wording and the collapsing footer control mode, and adds the Voxora mark to the React footer.
+
+1. VOICE SELF-ECHO CORRECTION
+   - Restored strict echo-cancellation verification: barge-in is enabled only when the microphone track explicitly reports echoCancellation=true. An undefined or false setting now triggers the safer half-duplex fallback.
+   - Restored the conservative V19 voice-activity gate: RMS threshold 0.018 (or three times the measured noise floor) and at least 180 ms of sustained near-end signal before speech is corroborated.
+   - Restored transcript-to-speech comparison and improved it to compare the active and recent speech segments. Likely echoes are discarded even when the VAD gate detects a signal.
+   - One-word playback matches are rejected unless they are explicit interruption commands such as Stop, Wait, Pause or Interrupt.
+   - Interim user speech now cancels current playback promptly; the final transcript is still required before a command is executed.
+   - The final transcript is checked against a short-lived snapshot of the interrupted speech, so a delayed echo result cannot become a command after playback has already stopped.
+   - If the browser does not confirm echo cancellation, recognition pauses during speech and resumes after playback. This prevents unsafe simultaneous listening on unsupported devices.
+
+2. CONTROL AND INTERFACE ABSTRACTION
+   - Removed the “ready for interruption” and microphone-processing details from user-facing status messages. The control dock now uses concise states such as Listening, Speaking, Working, Microphone off and Paused.
+   - Removed the footer collapse/expand feature. The complete control dock remains available at all times.
+   - When the footer enters view, the full dock moves above it rather than collapsing or hiding controls. No trailing page spacer is added.
+   - Removed provider and rate-limit implementation details from assistant notices; users receive a simple retry message.
+   - Consolidated duplicate voice-enable actions into one microphone control with accurate Enable / Mute / Unmute labels.
+   - Simplified the welcome greeting to describe what Voxora can help with, without explaining internal audio behaviour.
+
+3. FOOTER BRANDING
+   - Added the existing Voxora mark (`static/img/voxora-mark.svg`) beside the product name in the React footer.
+   - Added responsive footer identity styling and an accessible image alternative.
+
+4. REGRESSION COVERAGE
+   - Added a browser test that sends a transcript matching the current spoken passage while the AEC monitor detects a strong signal; the transcript must be ignored as self-echo.
+   - Retained a browser test proving a different user phrase interrupts playback.
+   - Added a fallback test proving recognition is stopped during speech when echo cancellation is not confirmed.
+   - Updated tests for the always-visible dock, no-collapse behaviour, footer logo and concise status labels.
+
+VALIDATION
+   - Python unit and source-regression tests: 98 passed.
+   - Python compilation for app.py, document_accessibility.py and tests: passed.
+   - Browser test JavaScript syntax: passed.
+   - React JSX parse/transpilation for App.jsx, VoiceAssistant.jsx and main.jsx: passed using the installed TypeScript parser.
+   - CSS parse: 230 top-level rules, 0 parse errors.
+   - ZIP integrity: passed.
+   - Vite production build and Playwright/axe browser suite: not run. npm dependency installation timed out in this environment, so these checks must run in CI or locally after dependencies are installed.
+   - Real-device microphone/speaker verification remains necessary. Browser mocks cannot establish acoustic performance in every room or device configuration.
+   - No GitHub push or production deployment is performed by this source-package preparation.
+
+GIT COMMIT
+   Message: fix(voice): reject speech echo and simplify the controls
+   Description:
+   - Require confirmed browser echo cancellation before enabling barge-in.
+   - Restore sustained V19 voice-activity detection and transcript-to-TTS echo matching.
+   - Interrupt playback on interim user speech and process only final commands.
+   - Use half-duplex fallback when echo cancellation is unavailable.
+   - Remove technical status wording and footer collapse controls.
+   - Keep full voice controls visible above the footer and add the Voxora logo.
+   - Update browser and source regression tests and documentation.
+
+--- PREVIOUS RELEASE NOTES: V23 ---
+
 VOXORA ACCESS — V23 ECHO-AWARE VOICE INTERRUPTION
 
 This update corrects the V22 regression that prevented users from interrupting Voxora while it was speaking. It preserves the existing React/Flask architecture, voice controls, welcome behaviour, document reading, account flows and resource management.

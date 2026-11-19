@@ -668,6 +668,21 @@
     font-size: 17px;
 }
 
+#voxora-app-root .react-footer-identity {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+}
+
+#voxora-app-root .react-footer-logo {
+    display: block;
+    width: 44px;
+    height: 44px;
+    flex: 0 0 44px;
+    object-fit: contain;
+}
+
 #voxora-app-root .react-site-footer p,
 #voxora-app-root .react-site-footer small {
     color: #d0ddd2;
@@ -1249,11 +1264,7 @@ body {
 .voxora-control-status{display:flex;align-items:center;gap:.45rem;padding:0 .45rem;font-size:.82rem;font-weight:750;white-space:nowrap}
 .voxora-control-indicator{width:9px;height:9px;border-radius:50%;background:#9a6b24}
 .voxora-control-indicator.is-active{background:#16834b;box-shadow:0 0 0 4px #16834b20}
-.voxora-control-dock .voxora-footer-toggle{min-height:40px;padding:.55rem .85rem;background:#075e58;color:#fff}
-.voxora-control-dock .voxora-footer-toggle:hover{background:#064b47}
-.voxora-control-dock.is-footer-visible:not(.is-expanded){left:auto;right:max(1rem,env(safe-area-inset-right));transform:none;width:auto;max-width:calc(100vw - 2rem);padding:.4rem .55rem;gap:.25rem}
-.voxora-control-dock.is-footer-visible:not(.is-expanded) .voxora-control-status,
-.voxora-control-dock.is-footer-visible:not(.is-expanded) button:not(.voxora-footer-toggle){display:none}
+.voxora-control-dock.is-footer-visible{bottom:calc(var(--voxora-footer-height, 150px) + var(--voxora-control-dock-bottom, 1rem) + env(safe-area-inset-bottom))}
 body{padding-bottom:0}
 /* The fixed voice dock must not create artificial trailing space after the footer. */
 #voxora-app-root .react-site-footer{padding-bottom:24px}
