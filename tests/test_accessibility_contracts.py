@@ -136,6 +136,19 @@ class AccessibilityContractTests(unittest.TestCase):
             with self.subTest(foreground=foreground, background=background):
                 self.assertGreaterEqual(_contrast_ratio(foreground, background), 4.5)
 
+    def test_voice_controls_are_portaled_and_fixed_to_the_viewport_bottom(self):
+        self.assertIn('import { createPortal } from "react-dom";', self.voice)
+        self.assertIn('return createPortal(<>', self.voice)
+        self.assertIn('</>, document.body);', self.voice)
+        self.assertNotIn("footerVisible", self.voice)
+        self.assertNotIn("is-footer-visible", self.voice)
+        dock_rule = re.search(r"\.voxora-control-dock\{([^}]+)\}", self.css)
+        self.assertIsNotNone(dock_rule)
+        self.assertIn("position:fixed !important", dock_rule.group(1))
+        self.assertIn("bottom:", dock_rule.group(1))
+        self.assertIn("left:50% !important", dock_rule.group(1))
+        self.assertNotIn(".voxora-control-dock.is-footer-visible", self.css)
+
     def test_voice_controls_have_accessible_names_and_toggle_state(self):
         self.assertIn('role="region" aria-label="Voxora controls"', self.voice)
         self.assertIn('aria-pressed={Boolean(active && !muted)}', self.voice)
@@ -281,17 +294,20 @@ class AccessibilityContractTests(unittest.TestCase):
         self.assertIn('root.style.removeProperty("--voxora-control-dock-height")', self.voice)
         self.assertIn('var(--voxora-control-dock-height, 7rem)', self.css)
         self.assertIn('var(--voxora-control-dock-bottom, 1rem)', self.css)
-        self.assertIn('bottom:calc(var(--voxora-control-dock-bottom, 1rem) + env(safe-area-inset-bottom))', self.css)
+        self.assertIn('bottom:calc(var(--voxora-control-dock-bottom, 1rem) + env(safe-area-inset-bottom, 0px)) !important', self.css)
         self.assertIn('bottom:calc(var(--voxora-control-dock-bottom,.45rem) + env(safe-area-inset-bottom))', self.css)
         self.assertIn(':root{--voxora-control-dock-bottom:.45rem;--voxora-control-dock-height:14rem}', self.css)
 
-    def test_scroll_to_top_and_footer_spacing_follow_the_voice_dock_height(self):
+    def test_scroll_to_top_uses_dock_height_without_footer_spacer(self):
         self.assertIn('bottom: calc(var(--voxora-control-dock-height, 7rem) + var(--voxora-control-dock-bottom, 1rem) + 1rem + env(safe-area-inset-bottom));', self.css)
         self.assertIn('body{padding-bottom:0}', self.css)
         self.assertIn('#voxora-app-root .react-site-footer{', self.css)
         self.assertIn("#voxora-app-root .react-site-footer{padding-bottom:24px}", self.css)
         self.assertNotIn("padding-bottom:calc(24px + var(--voxora-control-dock-height", self.css)
-        self.assertIn(".voxora-control-dock.is-footer-visible{bottom:calc(var(--voxora-footer-height", self.css)
+        self.assertNotIn(".voxora-control-dock.is-footer-visible", self.css)
+        self.assertNotIn("--voxora-footer-height", self.css)
+        self.assertNotIn("footerVisible", self.voice)
+        self.assertIn('import { createPortal } from "react-dom";', self.voice)
         self.assertNotIn("voxora-footer-toggle", self.voice)
         self.assertNotIn("dockExpanded", self.voice)
         self.assertNotIn("is-expanded", self.css)

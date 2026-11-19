@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useLocation, useNavigate } from "react-router-dom";
 import { accountNav, legal, nav, normalizeVoiceText } from "../data/navigation.js";
 
@@ -12,7 +13,6 @@ export default function VoiceAssistant() {
     const [speaking, setSpeaking] = useState(false);
     const [busy, setBusy] = useState(false);
     const [notice, setNotice] = useState("");
-    const [footerVisible, setFooterVisible] = useState(false);
     const [retrySeconds, setRetrySeconds] = useState(0);
     const getScrollBehavior = () => (
         typeof window.matchMedia === "function" &&
@@ -1417,56 +1417,6 @@ export default function VoiceAssistant() {
     }, []);
 
     useEffect(() => {
-        setFooterVisible(false);
-        const root = document.documentElement;
-        const appRoot = document.querySelector("#voxora-app-root") || document.body;
-        let observedFooter = null;
-        let footerResizeObserver = null;
-        const updateFooterPosition = () => {
-            const footer = document.querySelector(".react-site-footer");
-            if (!footer) {
-                setFooterVisible(false);
-                return;
-            }
-            const rect = footer.getBoundingClientRect();
-            const visible = rect.top >= 0 && rect.top < window.innerHeight && rect.bottom > 0;
-            setFooterVisible(visible);
-            if (visible) {
-                root.style.setProperty("--voxora-footer-height", `${Math.ceil(rect.height)}px`);
-            }
-        };
-        const observeFooter = () => {
-            const footer = document.querySelector(".react-site-footer");
-            if (!footer || footer === observedFooter) {
-                updateFooterPosition();
-                return;
-            }
-            footerResizeObserver?.disconnect();
-            observedFooter = footer;
-            if (typeof window.ResizeObserver === "function") {
-                footerResizeObserver = new window.ResizeObserver(updateFooterPosition);
-                footerResizeObserver.observe(footer);
-            }
-            updateFooterPosition();
-        };
-        observeFooter();
-        const mutationObserver = typeof window.MutationObserver === "function"
-            ? new window.MutationObserver(observeFooter)
-            : null;
-        mutationObserver?.observe(appRoot, { childList: true, subtree: true });
-        window.addEventListener("scroll", updateFooterPosition, { passive: true });
-        window.addEventListener("resize", updateFooterPosition, { passive: true });
-        return () => {
-            mutationObserver?.disconnect();
-            footerResizeObserver?.disconnect();
-            window.removeEventListener("scroll", updateFooterPosition);
-            window.removeEventListener("resize", updateFooterPosition);
-            observedFooter = null;
-            root.style.removeProperty("--voxora-footer-height");
-        };
-    }, [voiceLocation.pathname]);
-
-    useEffect(() => {
         const dock = document.querySelector(".voxora-control-dock");
         if (!dock) return undefined;
         const root = document.documentElement;
@@ -1494,7 +1444,7 @@ export default function VoiceAssistant() {
         return () => window.clearTimeout(timer);
     }, [notice, busy, speaking]);
 
-    return <>
+    return createPortal(<>
     <div className={"voxora-assistant-notice" + (!notice ? " is-empty" : busy ? " is-busy" : speaking ? " is-speaking" : "")} role="status" aria-live="polite" aria-atomic="true">
         {notice && <>
             <span className="voxora-assistant-notice-dot" aria-hidden="true"/>
@@ -1502,7 +1452,7 @@ export default function VoiceAssistant() {
             <button type="button" aria-label="Dismiss Voxora notification" onClick={() => setNotice("")}>×</button>
         </>}
     </div>
-    <div className={"voxora-control-dock" + (footerVisible ? " is-footer-visible" : "")} role="region" aria-label="Voxora controls">
+    <div className="voxora-control-dock" role="region" aria-label="Voxora controls">
         <div className="voxora-control-status" role="status" aria-live="polite" aria-atomic="true">
             <span className={"voxora-control-indicator" + (active && !muted ? " is-active" : "")} aria-hidden="true"/>
             <span>{retrySeconds > 0 ? "Please wait" : busy ? "Working" : speaking ? "Speaking" : active && !muted ? "Listening" : muted ? "Microphone off" : "Paused"}</span>
@@ -1516,5 +1466,5 @@ export default function VoiceAssistant() {
         }}><span aria-hidden="true">■</span> Stop speaking</button>
         <button type="button" onClick={() => active ? endSession() : startListening()}><span aria-hidden="true">{active ? "Ⅱ" : "▶"}</span> {active ? "Pause access" : "Resume access"}</button>
     </div>
-    </>;
+    </>, document.body);
 }

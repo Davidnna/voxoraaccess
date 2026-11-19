@@ -1,243 +1,40 @@
-VOXORA ACCESS — V24 VOICE ECHO CORRECTION AND UI SIMPLIFICATION
+VOXORA ACCESS — V25 FIXED VIEWPORT VOICE CONTROLS
 
-This update corrects the V23 self-echo regression while retaining voice interruption on browsers that confirm echo cancellation. It also removes technical status wording and the collapsing footer control mode, and adds the Voxora mark to the React footer.
+This release corrects the voice-control dock positioning. In V24, the dock was moved upward whenever the footer entered the viewport. Because the offset used the footer's full height rather than its actual viewport position, the controls could appear near the middle of the screen.
 
-1. VOICE SELF-ECHO CORRECTION
-   - Restored strict echo-cancellation verification: barge-in is enabled only when the microphone track explicitly reports echoCancellation=true. An undefined or false setting now triggers the safer half-duplex fallback.
-   - Restored the conservative V19 voice-activity gate: RMS threshold 0.018 (or three times the measured noise floor) and at least 180 ms of sustained near-end signal before speech is corroborated.
-   - Restored transcript-to-speech comparison and improved it to compare the active and recent speech segments. Likely echoes are discarded even when the VAD gate detects a signal.
-   - One-word playback matches are rejected unless they are explicit interruption commands such as Stop, Wait, Pause or Interrupt.
-   - Interim user speech now cancels current playback promptly; the final transcript is still required before a command is executed.
-   - The final transcript is checked against a short-lived snapshot of the interrupted speech, so a delayed echo result cannot become a command after playback has already stopped.
-   - If the browser does not confirm echo cancellation, recognition pauses during speech and resumes after playback. This prevents unsafe simultaneous listening on unsupported devices.
+1. FIXED VIEWPORT POSITIONING
+   - Removed footer-visibility detection and footer-height-based dock offsets.
+   - Rendered the assistant notice and control dock through a React portal attached to document.body. This prevents application layout containers from becoming the fixed-position containing block.
+   - Anchored the dock to the bottom centre of the browser viewport with safe-area support.
+   - Applied explicit fixed-position constraints and a global stacking order.
+   - Retained responsive sizing and the measured dock height used by the scroll-to-top control.
+   - Did not add bottom padding or artificial trailing space to the page footer.
 
-2. CONTROL AND INTERFACE ABSTRACTION
-   - Removed the “ready for interruption” and microphone-processing details from user-facing status messages. The control dock now uses concise states such as Listening, Speaking, Working, Microphone off and Paused.
-   - Removed the footer collapse/expand feature. The complete control dock remains available at all times.
-   - When the footer enters view, the full dock moves above it rather than collapsing or hiding controls. No trailing page spacer is added.
-   - Removed provider and rate-limit implementation details from assistant notices; users receive a simple retry message.
-   - Consolidated duplicate voice-enable actions into one microphone control with accurate Enable / Mute / Unmute labels.
-   - Simplified the welcome greeting to describe what Voxora can help with, without explaining internal audio behaviour.
+2. PRESERVED FUNCTIONALITY
+   - Preserved V24 echo cancellation, speech interruption, transcript echo filtering and half-duplex fallback.
+   - Preserved the existing microphone states and Stop speaking control.
+   - Preserved the Voxora logo in the footer.
+   - No changes to document processing, account management, sharing, or resource permissions.
 
-3. FOOTER BRANDING
-   - Added the existing Voxora mark (`static/img/voxora-mark.svg`) beside the product name in the React footer.
-   - Added responsive footer identity styling and an accessible image alternative.
-
-4. REGRESSION COVERAGE
-   - Added a browser test that sends a transcript matching the current spoken passage while the AEC monitor detects a strong signal; the transcript must be ignored as self-echo.
-   - Retained a browser test proving a different user phrase interrupts playback.
-   - Added a fallback test proving recognition is stopped during speech when echo cancellation is not confirmed.
-   - Updated tests for the always-visible dock, no-collapse behaviour, footer logo and concise status labels.
+3. REGRESSION COVERAGE
+   - Added a source contract verifying the control dock is portaled to document.body.
+   - Added a source contract verifying fixed viewport positioning.
+   - Updated the browser test to verify the dock remains at the same viewport-relative bottom position before and after scrolling.
+   - Added a guard against reintroducing footer-dependent positioning.
 
 VALIDATION
-   - Python unit and source-regression tests: 98 passed.
+   - Python regression and source-contract tests: 99 passed.
    - Python compilation for app.py, document_accessibility.py and tests: passed.
-   - Browser test JavaScript syntax: passed.
-   - React JSX parse/transpilation for App.jsx, VoiceAssistant.jsx and main.jsx: passed using the installed TypeScript parser.
-   - CSS parse: 230 top-level rules, 0 parse errors.
-   - ZIP integrity: passed.
-   - Vite production build and Playwright/axe browser suite: not run. npm dependency installation timed out in this environment, so these checks must run in CI or locally after dependencies are installed.
-   - Real-device microphone/speaker verification remains necessary. Browser mocks cannot establish acoustic performance in every room or device configuration.
+   - React JSX syntax, CSS parsing and browser-test JavaScript syntax: passed. Vite production build and Playwright/axe browser suite: not run because the project Node dependencies are not installed in this environment.
+   - Visual verification at desktop and mobile viewport sizes: pending deployment and browser execution.
    - No GitHub push or production deployment is performed by this source-package preparation.
 
 GIT COMMIT
-   Message: fix(voice): reject speech echo and simplify the controls
+   Message: fix(ui): anchor Voxora controls to the viewport bottom
    Description:
-   - Require confirmed browser echo cancellation before enabling barge-in.
-   - Restore sustained V19 voice-activity detection and transcript-to-TTS echo matching.
-   - Interrupt playback on interim user speech and process only final commands.
-   - Use half-duplex fallback when echo cancellation is unavailable.
-   - Remove technical status wording and footer collapse controls.
-   - Keep full voice controls visible above the footer and add the Voxora logo.
-   - Update browser and source regression tests and documentation.
-
---- PREVIOUS RELEASE NOTES: V23 ---
-
-VOXORA ACCESS — V23 ECHO-AWARE VOICE INTERRUPTION
-
-This update corrects the V22 regression that prevented users from interrupting Voxora while it was speaking. It preserves the existing React/Flask architecture, voice controls, welcome behaviour, document reading, account flows and resource management.
-
-1. VOICE BARGE-IN
-   - SpeechRecognition remains active during speech output when an echo-aware microphone monitor is available.
-   - On the user's Enable / Resume action, Voxora requests a separate microphone stream with echo cancellation, noise suppression and automatic gain control.
-   - A local Web Audio analyser performs voice-activity detection on the processed stream. The monitor does not record, persist or upload audio.
-   - While Voxora is speaking, final speech-recognition results are ignored unless the echo-cancelled monitor has detected recent near-end user speech.
-   - A corroborated user transcript immediately cancels the current utterance and remaining speech queue, then processes the transcript as a new command.
-   - Direct interruption phrases include Stop, Stop speaking, Be quiet, Wait, Hold on, Pause and Interrupt, with an optional Voxora prefix.
-
-2. SELF-ECHO PROTECTION AND FALLBACK
-   - Voxora no longer relies on a separate echoCancellation stream to clean the SpeechRecognition input itself. Instead, the processed stream acts as an independent near-end voice-activity gate for recognition results.
-   - Buffered recognition results without recent user voice activity are discarded during playback and the short post-playback guard.
-   - If echo cancellation is unavailable, the browser cannot start the monitor, or microphone permission is unavailable, Voxora safely falls back to V22 half-duplex behaviour. In that fallback, spoken interruption is unavailable during playback; the Stop speaking control remains available.
-   - Microphone mute and Pause access stop the monitor and release its media tracks. The monitor is restarted only when voice access is enabled again.
-   - Stale monitor startup results are discarded after mute, session end or component teardown.
-
-3. TESTS AND DOCUMENTATION
-   - Replaced the V22 test that expected recognition to remain off during speech.
-   - Added browser tests proving that uncorroborated echo-like transcripts are ignored, near-end user speech interrupts playback, and a spoken Stop command cancels speech.
-   - Added source-contract tests for echo cancellation constraints, VAD gating, interruption handling and safe fallback.
-   - Updated the README to document browser support requirements, local-only monitor processing and the fallback behaviour.
-
-VALIDATION
-   - Python unit and source-regression tests: 97 passed.
-   - Python compilation for app.py and document_accessibility.py: passed.
-   - Browser test JavaScript syntax checks: passed.
-   - React JSX syntax/transpilation check using the installed TypeScript parser: passed.
-   - Vite production build and Playwright/axe browser suite: not run because root and browser-test Node dependencies are not installed in this environment.
-   - Real-device microphone/speaker verification is required after deployment. Browser mocks validate event flow but cannot establish acoustic performance on every device, speaker volume or room.
-   - No GitHub push or production deployment is performed by this source-package preparation.
-
-GIT COMMIT
-   Message: feat(voice): support safe voice interruption during playback
-   Description:
-   - Add echo-cancelled microphone monitoring and local voice-activity detection.
-   - Keep recognition active during playback when echo-aware monitoring is available.
-   - Gate playback-time transcripts on recent near-end user speech.
-   - Interrupt speech synthesis and process corroborated user commands immediately.
-   - Preserve half-duplex fallback where echo cancellation is unavailable.
-   - Release microphone monitor resources on mute, session end and teardown.
-   - Update browser regression tests and voice documentation.
-
---- PREVIOUS RELEASE NOTES: V22 ---
-
-VOXORA ACCESS — V22 HALF-DUPLEX VOICE SEPARATION
-
-This update corrects a voice-input/output feedback defect reported after V21 deployment. Voxora could recognise its own synthesized speech as if it were the user's voice. The earlier implementation used a separate getUserMedia stream to inspect echo-cancelled audio while the browser SpeechRecognition API continued listening through its own capture path. Echo cancellation on that separate stream did not guarantee echo cancellation in the recognition engine.
-
-1. STRICT INPUT/OUTPUT SEPARATION
-   - Removed the separate getUserMedia / AudioContext echo-monitor stream and the related voice-activity detector.
-   - Voxora now uses half-duplex audio: when a spoken response is prepared, it marks speech as active, aborts the SpeechRecognition session, and waits for the recognition onend event before starting speech synthesis.
-   - If the browser does not dispatch onend, a bounded 1.5-second fallback issues another abort before allowing playback to proceed.
-   - Speech recognition remains stopped for every speech segment, including long-document chunk transitions.
-   - Each resumed listening period uses a fresh SpeechRecognition instance. Results from an aborted or ended instance are rejected even if a browser delivers them late.
-   - Results are also discarded when voice access is paused, during speech output, and throughout the post-playback quiet interval.
-
-2. POST-PLAYBACK QUIET PERIOD
-   - After speech synthesis finishes or fails, Voxora waits 900 ms before restarting recognition.
-   - Buffered recognition results received while Voxora is speaking or during the quiet interval are discarded.
-   - Pending recognition-resume timers are cancelled whenever new speech starts, preventing a delayed timer from reopening the microphone during playback.
-   - The microphone remains logically separate from the speaker: mute affects only input, while Voxora's speech output continues normally.
-   - The Stop speaking control remains available and resumes listening only after a 650 ms settling interval.
-
-3. USER FEEDBACK AND EXPECTATIONS
-   - The status now reports “Speaking · microphone paused” while Voxora is speaking.
-   - Status messages explain that recognition is paused to prevent audio feedback.
-   - The welcome greeting no longer promises spoken interruption; it explains that users can use Stop speaking.
-   - Users can still speak commands normally after Voxora has finished and listening has resumed.
-
-4. TESTS AND DOCUMENTATION
-   - Added source-contract checks for half-duplex operation, recognition abort, onend coordination and post-playback guard.
-   - Extended the browser test fixture to simulate recognition lifecycle events and held speech output.
-   - Added a browser regression test that verifies recognition is off during speech, a self-echo-like command is ignored, and listening resumes after playback.
-   - Updated README behaviour and browser limitations.
-
-VALIDATION
-   - Python unit and source-regression tests: 97 passed.
-   - Python compilation: passed.
-   - Browser test JavaScript syntax: passed.
-   - JSX/Vite production build and Playwright/axe browser suite: not run because root and browser-test Node dependencies are not installed in this environment.
-   - Real-device microphone/speaker verification is still required after deployment; browser mocks cannot establish acoustic performance on every device.
-   - No GitHub push or production deployment is performed by this source-package preparation.
-
-GIT COMMIT
-   Message: fix(voice): pause recognition during Voxora speech to prevent self-echo
-   Description:
-   - Replace unreliable separate-stream echo monitoring with strict half-duplex voice handling.
-   - Abort speech recognition before text-to-speech and wait for recognition shutdown.
-   - Resume listening after a 900 ms post-playback quiet interval.
-   - Discard recognition results during playback and the quiet interval.
-   - Update voice status, welcome wording, regression tests and documentation.
-
---- PREVIOUS RELEASE NOTES: V21 ---
-
-VOXORA ACCESS — V21 VOICE CONTROL SIMPLIFICATION
-
-This update builds on V20. It removes the two diagnostic/replay buttons from Voxora's controls without disabling the automatic welcome greeting or changing the existing voice interaction model.
-
-1. CONTROL DOCK CLEANUP
-   - Removed the Test speaker button and its Web Audio tone / diagnostic speech routine.
-   - Removed the Play welcome button from the expanded voice dock.
-   - The compact footer launcher now only expands or collapses the voice controls; it never changes its label to Play welcome.
-   - Removed the state and rendering logic that existed solely to display the welcome replay button.
-
-2. AUTOMATIC WELCOME PRESERVED
-   - Voxora still attempts its welcome greeting on each full page load.
-   - If the browser blocks automatic playback, the pending greeting is retried after the next eligible user interaction, including the primary voice control or the compact footer controls launcher.
-   - The status message explains that an interaction can retry the greeting. No dedicated welcome button is displayed.
-
-3. SPEECH FEEDBACK
-   - Removed references to the deleted Test speaker control from playback status and error messages.
-   - Speech-start feedback remains concise. Playback errors direct users to check device media volume and browser audio settings.
-   - Microphone state, mute/unmute behaviour, speech stop, pause/resume and document reading remain unchanged.
-
-4. REGRESSION COVERAGE AND DOCUMENTATION
-   - Browser tests now assert that neither Test speaker nor Play welcome is rendered, while verifying that automatic welcome retry still works.
-   - Source-contract tests verify that the obsolete button state and diagnostic routine are absent.
-   - README setup and limitation notes now describe the current no-button welcome retry behaviour.
-
-VALIDATION
-   - Python unit and source-regression tests: 96 passed.
-   - Python compilation: passed.
-   - TypeScript parser/transpilation checks for the React JSX files: passed.
-   - Browser test JavaScript syntax: passed.
-   - Playwright/axe browser tests and the Vite production build were not run in this environment because frontend/browser dependencies were not installed. They remain to be verified by GitHub Actions or locally.
-   - No live Render deployment or real-device audio test was performed.
-
-GIT COMMIT
-   Message: fix(voice): remove speaker test and welcome replay controls
-   Description:
-   - Remove the speaker-test button and diagnostic playback routine.
-   - Remove the welcome replay button from expanded and compact controls.
-   - Preserve automatic welcome playback and retry after eligible user interaction.
-   - Simplify speech status messages and update accessibility regression tests and README guidance.
-
---- PREVIOUS RELEASE NOTES: V20 ---
-
-VOXORA ACCESS — V20 DOCUMENT SEMANTICS AND VOICE RELIABILITY
-
-This update builds on the uploaded V19 source package. It does not change the Flask/React architecture, authentication, resource permissions, database schema or Render deployment model.
-
-1. DOCUMENT STRUCTURE AND TABLE SEMANTICS
-   - DOCX tables use a header row only when the source explicitly marks the row with Word table-header metadata.
-   - DOCX tables without an explicit header row preserve every row as data and display a warning instead of guessing.
-   - CSV and PowerPoint tables no longer assume that their first row is a header. All rows are preserved as data until their source semantics can be verified.
-   - PowerPoint extraction warns that stored shape order may differ from the intended screen-reader reading order.
-   - DOCX and PPTX extraction warn when merged cells may obscure original row/column relationships.
-   - Word text boxes are identified as a possible extraction gap. Existing warnings for charts, diagrams, embedded objects, notes and image descriptions remain.
-   - Markdown tables retain header semantics because their separator row explicitly identifies the header row.
-   - Resource owners can refresh extracted reading text for existing uploads, so the corrected semantics can be applied without uploading duplicate files.
-
-2. VOICE PLAYBACK RELIABILITY
-   - Voxora no longer calls speechSynthesis.cancel() every time it starts an otherwise idle utterance. This avoids an unnecessary reset that can interfere with speech output in some mobile browsers.
-   - The component warms the browser's voice list and selects a voice using the user's language, then an English voice, then the system default.
-   - Speech chunks are limited by word boundaries, including when a source contains a very long sentence without punctuation.
-   - Startup and completion watchdogs report a failed or stalled utterance instead of leaving the interface stuck in a speaking state.
-   - A Test speaker control plays a short Web Audio tone and then a spoken phrase. This distinguishes device output problems from speech-synthesis problems as far as browser APIs allow.
-   - The microphone mute state remains independent of speaker output.
-
-3. WELCOME GREETING
-   - The welcome is attempted on every full page load rather than being suppressed by a sessionStorage flag after the first visit in the same tab.
-   - If automatic speech is blocked, a persistent Play welcome control remains visible until the welcome finishes or the user chooses another speech action.
-   - A page interaction or keyboard activation can retry pending welcome speech. Browsers may still require a real user gesture before allowing audio.
-
-4. MICROPHONE CONTROL STATE
-   - The microphone action now reflects three states: Enable microphone when voice access is inactive, Mute microphone while listening, and Unmute microphone while muted.
-   - aria-pressed reflects the active listening state, and a data attribute exposes the current microphone state for testing.
-
-5. FOOTER SPACING
-   - Removed the footer's extra bottom padding that reserved the entire fixed voice-dock height and appeared as a large blank area below the footer content.
-   - When the footer enters the viewport, the dock collapses to a compact control launcher; it expands on request and offers Play welcome directly when a greeting is pending.
-   - Body bottom padding remains zero; the scroll-to-top control still uses the measured dock height to stay clear of the controls.
-
-6. LONG DOCUMENT READING
-   - Removed the separate 40,000-character read-aloud cut-off. Voxora now sends all text returned by the accessible reading view to its segmented speech queue, up to the configured extraction limit.
-   - A warning is still provided when the source document was only partially extracted.
-
-VALIDATION
-   - 96 Python unit and source-regression tests passed after the changes.
-   - The browser test suite was updated for the welcome retry, speaker test, microphone state, document reading and footer changes.
-   - A live browser/Render deployment test has not yet been performed in this environment.
-   - The Vite production build and Playwright/axe browser suite must still be run by the build pipeline or locally after installing the frontend and browser-test dependencies.
-
-IMPORTANT BROWSER LIMITATION
-   - No website can guarantee audible speech when a device is physically muted, its media volume is zero, the browser has no available speech voice, or the operating system blocks audio. The Test speaker control provides a diagnostic tone and a separate speech test; it does not override device or browser restrictions.
+   - Remove footer visibility tracking and footer-height dock offsets.
+   - Render the assistant notice and voice controls through a document-level React portal.
+   - Keep the control dock fixed at the bottom centre of the viewport.
+   - Preserve safe-area spacing and responsive dock sizing.
+   - Retain existing voice, accessibility, footer logo and application functionality.
+   - Add regression coverage for viewport-fixed positioning.

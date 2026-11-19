@@ -1255,7 +1255,7 @@ body {
 }
 
 /* Persistent, always-visible Voxora controls */
-.voxora-control-dock{position:fixed;left:50%;bottom:calc(var(--voxora-control-dock-bottom, 1rem) + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:3000;display:flex;align-items:center;justify-content:center;gap:.55rem;flex-wrap:wrap;width:min(900px,calc(100vw - 2rem));padding:.7rem .85rem;border:1px solid #c9d9d0;border-radius:18px;background:#ffffffF2;box-shadow:0 12px 38px #142d2540;backdrop-filter:blur(14px);color:#183d34}
+.voxora-control-dock{position:fixed !important;top:auto !important;right:auto !important;left:50% !important;bottom:calc(var(--voxora-control-dock-bottom, 1rem) + env(safe-area-inset-bottom, 0px)) !important;transform:translate3d(-50%,0,0) !important;z-index:10000;display:flex;align-items:center;justify-content:center;gap:.55rem;flex-wrap:wrap;width:min(900px,calc(100vw - 2rem));padding:.7rem .85rem;border:1px solid #c9d9d0;border-radius:18px;background:#ffffffF2;box-shadow:0 12px 38px #142d2540;backdrop-filter:blur(14px);color:#183d34}
 .voxora-control-dock button{min-height:44px;padding:.65rem .85rem;border:1px solid #0b6c63;border-radius:999px;background:#fff;color:#075e58;font:inherit;font-size:.88rem;font-weight:750;cursor:pointer}
 .voxora-control-dock button:hover{background:#edf7f2}
 .voxora-control-dock .voxora-dock-primary{background:#075e58;color:#fff}
@@ -1264,7 +1264,7 @@ body {
 .voxora-control-status{display:flex;align-items:center;gap:.45rem;padding:0 .45rem;font-size:.82rem;font-weight:750;white-space:nowrap}
 .voxora-control-indicator{width:9px;height:9px;border-radius:50%;background:#9a6b24}
 .voxora-control-indicator.is-active{background:#16834b;box-shadow:0 0 0 4px #16834b20}
-.voxora-control-dock.is-footer-visible{bottom:calc(var(--voxora-footer-height, 150px) + var(--voxora-control-dock-bottom, 1rem) + env(safe-area-inset-bottom))}
+
 body{padding-bottom:0}
 /* The fixed voice dock must not create artificial trailing space after the footer. */
 #voxora-app-root .react-site-footer{padding-bottom:24px}

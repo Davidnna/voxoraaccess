@@ -417,26 +417,40 @@ test.describe("Voxora browser accessibility", () => {
         expect(spoken).toContain("A sample passage for assistive reading");
     });
 
-    test("footer has no trailing body spacer, keeps full controls visible and displays the logo", async ({ page }) => {
+    test("footer has no trailing body spacer, controls stay viewport-fixed and logo remains visible", async ({ page }) => {
         await preparePage(page, "/about");
-        await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
         const dock = page.locator(".voxora-control-dock");
-        await expect(dock).toHaveClass(/is-footer-visible/);
         await expect(dock.getByRole("button", { name: "Enable microphone" })).toBeVisible();
         await expect(dock.getByRole("button", { name: "Stop speaking" })).toBeVisible();
         await expect(page.getByRole("button", { name: "Collapse controls" })).toHaveCount(0);
         await expect(page.getByRole("img", { name: "Voxora Access logo" })).toBeVisible();
         await expect.poll(() => page.locator(".react-footer-logo").evaluate((image) => image.complete && image.naturalWidth > 0)).toBe(true);
-        const metrics = await page.evaluate(() => ({
-            bodyPadding: getComputedStyle(document.body).paddingBottom,
-            footerBottom: document.querySelector(".react-site-footer").getBoundingClientRect().bottom + window.scrollY,
-            footerTop: document.querySelector(".react-site-footer").getBoundingClientRect().top,
-            dockBottom: document.querySelector(".voxora-control-dock").getBoundingClientRect().bottom,
-            documentHeight: document.documentElement.scrollHeight,
-        }));
-        expect(metrics.bodyPadding).toBe("0px");
-        expect(Math.abs(metrics.documentHeight - metrics.footerBottom)).toBeLessThanOrEqual(2);
-        expect(metrics.dockBottom).toBeLessThan(metrics.footerTop);
+
+        const measureDock = () => page.evaluate(() => {
+            const dockElement = document.querySelector(".voxora-control-dock");
+            const rect = dockElement.getBoundingClientRect();
+            return {
+                bodyPadding: getComputedStyle(document.body).paddingBottom,
+                footerBottom: document.querySelector(".react-site-footer").getBoundingClientRect().bottom + window.scrollY,
+                dockPosition: getComputedStyle(dockElement).position,
+                dockBottom: rect.bottom,
+                viewportHeight: window.innerHeight,
+                computedBottom: parseFloat(getComputedStyle(dockElement).bottom),
+                isDirectBodyChild: dockElement.parentElement === document.body,
+                documentHeight: document.documentElement.scrollHeight,
+            };
+        });
+
+        const beforeScroll = await measureDock();
+        await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+        const afterScroll = await measureDock();
+        expect(beforeScroll.dockPosition).toBe("fixed");
+        expect(afterScroll.dockPosition).toBe("fixed");
+        expect(afterScroll.isDirectBodyChild).toBe(true);
+        expect(afterScroll.bodyPadding).toBe("0px");
+        expect(Math.abs(afterScroll.documentHeight - afterScroll.footerBottom)).toBeLessThanOrEqual(2);
+        expect(Math.abs((afterScroll.viewportHeight - afterScroll.dockBottom) - afterScroll.computedBottom)).toBeLessThanOrEqual(2);
+        expect(Math.abs((beforeScroll.viewportHeight - beforeScroll.dockBottom) - beforeScroll.computedBottom)).toBeLessThanOrEqual(2);
     });
 
     test("document preview has a title and a non-embedded alternative", async ({ page }) => {
