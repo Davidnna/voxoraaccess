@@ -1,3 +1,46 @@
+VOXORA ACCESS — V21 VOICE CONTROL SIMPLIFICATION
+
+This update builds on V20. It removes the two diagnostic/replay buttons from Voxora's controls without disabling the automatic welcome greeting or changing the existing voice interaction model.
+
+1. CONTROL DOCK CLEANUP
+   - Removed the Test speaker button and its Web Audio tone / diagnostic speech routine.
+   - Removed the Play welcome button from the expanded voice dock.
+   - The compact footer launcher now only expands or collapses the voice controls; it never changes its label to Play welcome.
+   - Removed the state and rendering logic that existed solely to display the welcome replay button.
+
+2. AUTOMATIC WELCOME PRESERVED
+   - Voxora still attempts its welcome greeting on each full page load.
+   - If the browser blocks automatic playback, the pending greeting is retried after the next eligible user interaction, including the primary voice control or the compact footer controls launcher.
+   - The status message explains that an interaction can retry the greeting. No dedicated welcome button is displayed.
+
+3. SPEECH FEEDBACK
+   - Removed references to the deleted Test speaker control from playback status and error messages.
+   - Speech-start feedback remains concise. Playback errors direct users to check device media volume and browser audio settings.
+   - Microphone state, mute/unmute behaviour, speech stop, pause/resume and document reading remain unchanged.
+
+4. REGRESSION COVERAGE AND DOCUMENTATION
+   - Browser tests now assert that neither Test speaker nor Play welcome is rendered, while verifying that automatic welcome retry still works.
+   - Source-contract tests verify that the obsolete button state and diagnostic routine are absent.
+   - README setup and limitation notes now describe the current no-button welcome retry behaviour.
+
+VALIDATION
+   - Python unit and source-regression tests: 96 passed.
+   - Python compilation: passed.
+   - TypeScript parser/transpilation checks for the React JSX files: passed.
+   - Browser test JavaScript syntax: passed.
+   - Playwright/axe browser tests and the Vite production build were not run in this environment because frontend/browser dependencies were not installed. They remain to be verified by GitHub Actions or locally.
+   - No live Render deployment or real-device audio test was performed.
+
+GIT COMMIT
+   Message: fix(voice): remove speaker test and welcome replay controls
+   Description:
+   - Remove the speaker-test button and diagnostic playback routine.
+   - Remove the welcome replay button from expanded and compact controls.
+   - Preserve automatic welcome playback and retry after eligible user interaction.
+   - Simplify speech status messages and update accessibility regression tests and README guidance.
+
+--- PREVIOUS RELEASE NOTES: V20 ---
+
 VOXORA ACCESS — V20 DOCUMENT SEMANTICS AND VOICE RELIABILITY
 
 This update builds on the uploaded V19 source package. It does not change the Flask/React architecture, authentication, resource permissions, database schema or Render deployment model.

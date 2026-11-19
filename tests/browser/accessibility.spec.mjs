@@ -232,6 +232,8 @@ test.describe("Voxora browser accessibility", () => {
         const stop = controls.getByRole("button", { name: "Stop speaking" });
         await expect(enable).toBeVisible();
         await expect(stop).toBeVisible();
+        await expect(controls.getByRole("button", { name: "Test speaker" })).toHaveCount(0);
+        await expect(controls.getByRole("button", { name: "Play welcome" })).toHaveCount(0);
         await enable.click();
         const mute = controls.getByRole("button", { name: "Mute microphone" });
         await expect(mute).toHaveAttribute("aria-pressed", "true");
@@ -241,14 +243,6 @@ test.describe("Voxora browser accessibility", () => {
         await unmute.click();
         await expect(controls.getByRole("button", { name: "Mute microphone" })).toHaveAttribute("aria-pressed", "true");
         await expect(controls.getByRole("button", { name: "Pause access" })).toBeVisible();
-    });
-
-    test("speaker test is available as a direct user-gesture playback check", async ({ page }) => {
-        await preparePage(page, "/about");
-        const controls = await expandVoiceDock(page);
-        await controls.getByRole("button", { name: "Test speaker" }).click();
-        await page.waitForFunction(() => window.__voxoraSpeechOutput.some(text => text.includes("Voxora speaker test")));
-        await expect(controls.getByRole("button", { name: "Test speaker" })).toBeVisible();
     });
 
     test("welcome retries after the browser blocks automatic speech until a user gesture", async ({ page }) => {
@@ -264,15 +258,18 @@ test.describe("Voxora browser accessibility", () => {
         expect(spoken[1]).toContain("Hello, welcome to Voxora Access");
     });
 
-    test("compact footer dock offers Play welcome when autoplay is blocked", async ({ page }) => {
+    test("compact footer controls do not expose a welcome action and retry welcome on a normal control interaction", async ({ page }) => {
         await preparePage(page, "/about", false, { welcome: true, speechBehavior: "blocked-once" });
         await page.waitForFunction(() => window.__voxoraSpeechCallCount === 1);
         await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
-        const playWelcome = page.getByRole("button", { name: "Play welcome" });
-        await expect(playWelcome).toBeVisible();
-        await playWelcome.click();
+        const controlsToggle = page.getByRole("button", { name: "Voxora controls" });
+        await expect(controlsToggle).toBeVisible();
+        await expect(page.getByRole("button", { name: "Play welcome" })).toHaveCount(0);
+        await expect(page.getByRole("button", { name: "Test speaker" })).toHaveCount(0);
+        await controlsToggle.click();
         await page.waitForFunction(() => window.__voxoraSpeechCallCount === 2);
         await expect(page.getByRole("button", { name: "Collapse controls" })).toBeVisible();
+        await expect(page.getByRole("button", { name: "Play welcome" })).toHaveCount(0);
     });
 
     test("welcome is attempted again after a full site reload in the same tab", async ({ page }) => {

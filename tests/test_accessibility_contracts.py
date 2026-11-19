@@ -284,7 +284,7 @@ class AccessibilityContractTests(unittest.TestCase):
 
     def test_speech_status_tracks_browser_playback_and_reports_failures(self):
         self.assertIn('utterance.onstart = () => {', self.voice)
-        self.assertIn('setNotice("Voxora is speaking. If you cannot hear audio, check your device media volume or use Test speaker.")', self.voice)
+        self.assertIn('setNotice("Voxora is speaking.")', self.voice)
         self.assertIn('utterance.onerror = (event) => {', self.voice)
         self.assertIn('fail(event?.error || "speech error")', self.voice)
         self.assertIn('speechWatchdogRef.current = window.setTimeout', self.voice)
@@ -294,11 +294,15 @@ class AccessibilityContractTests(unittest.TestCase):
         self.assertNotIn('WELCOME_SESSION_KEY', self.voice)
         self.assertNotIn('sessionStorage.getItem("voxora-welcomed-session-v1")', self.voice)
         self.assertIn('const welcomeEnabled = window.voxoraWelcomeEnabled !== false', self.voice)
-        self.assertIn('setWelcomeAvailable(true)', self.voice)
-        self.assertIn('className="voxora-welcome-button"', self.voice)
+        self.assertNotIn('welcomeAvailable', self.voice)
+        self.assertNotIn('setWelcomeAvailable', self.voice)
+        self.assertNotIn('voxora-welcome-button', self.voice)
+        self.assertNotIn('voxora-test-speaker', self.voice)
+        self.assertNotIn('Test speaker', self.voice)
+        self.assertNotIn('Play welcome', self.voice)
         self.assertIn('retryPendingSpeechFromGesture', self.voice)
         self.assertIn('welcomePendingRef.current = true', self.voice)
-        self.assertIn('setWelcomeAvailable(false)', self.voice)
+        self.assertIn('classList.contains("voxora-footer-toggle")', self.voice)
 
     def test_document_reading_uses_all_extracted_text_instead_of_a_40k_prefix(self):
         self.assertNotIn("const maxReadCharacters = 40000", self.voice)

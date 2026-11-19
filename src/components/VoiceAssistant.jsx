@@ -12,7 +12,6 @@ export default function VoiceAssistant() {
     const [speaking, setSpeaking] = useState(false);
     const [busy, setBusy] = useState(false);
     const [notice, setNotice] = useState("");
-    const [welcomeAvailable, setWelcomeAvailable] = useState(false);
     const [footerVisible, setFooterVisible] = useState(false);
     const [dockExpanded, setDockExpanded] = useState(false);
     const [retrySeconds, setRetrySeconds] = useState(0);
@@ -221,8 +220,7 @@ export default function VoiceAssistant() {
             ? { text: WELCOME_TEXT, welcome: true }
             : null;
         welcomePendingRef.current = interruptedWelcome;
-        if (interruptedWelcome) setWelcomeAvailable(true);
-        else removeWelcomeGestureListener();
+        if (!interruptedWelcome) removeWelcomeGestureListener();
         speakingRef.current = false;
         speakingTextRef.current = "";
         setSpeaking(false);
@@ -373,7 +371,6 @@ export default function VoiceAssistant() {
             if (welcome) {
                 welcomePendingRef.current = true;
                 pendingSpeechRef.current = { text: content, welcome: true };
-                setWelcomeAvailable(true);
             }
             return false;
         }
@@ -415,10 +412,8 @@ export default function VoiceAssistant() {
         pendingSpeechRef.current = null;
         if (welcome) {
             welcomePendingRef.current = true;
-            setWelcomeAvailable(true);
         } else if (!options.preserveWelcome) {
             welcomePendingRef.current = false;
-            setWelcomeAvailable(false);
             removeWelcomeGestureListener();
         }
         if (!echoCancellationRef.current) recognitionRef.current?.stop();
@@ -446,10 +441,9 @@ export default function VoiceAssistant() {
             pendingSpeechRef.current = { text: content, welcome };
             if (welcome) {
                 welcomePendingRef.current = true;
-                setWelcomeAvailable(true);
-                setNotice("Voxora could not start the welcome audio automatically. Select Play welcome or interact with the page to try again.");
+                setNotice("Voxora could not start the welcome audio automatically. Interact with the page to try again.");
             } else {
-                setNotice(`Voxora could not play audio (${detail}). Select Test speaker to retry, and check your device media volume and browser audio settings.`);
+                setNotice(`Voxora could not play audio (${detail}). Check your device media volume and browser audio settings.`);
             }
             resumeListening();
         };
@@ -460,7 +454,6 @@ export default function VoiceAssistant() {
                 if (welcome) {
                     welcomePendingRef.current = false;
                     pendingSpeechRef.current = null;
-                    setWelcomeAvailable(false);
                     removeWelcomeGestureListener();
                 }
                 finish();
@@ -506,7 +499,7 @@ export default function VoiceAssistant() {
                     speechWatchdogRef.current = null;
                 }
                 setSpeaking(true);
-                setNotice("Voxora is speaking. If you cannot hear audio, check your device media volume or use Test speaker.");
+                setNotice("Voxora is speaking.");
                 // Some browsers fire onstart but never deliver onend. Do not leave
                 // the interface permanently stuck in the speaking state.
                 speechEndWatchdogRef.current = window.setTimeout(() => {
@@ -528,7 +521,6 @@ export default function VoiceAssistant() {
                 if (welcome) {
                     welcomePendingRef.current = false;
                     pendingSpeechRef.current = null;
-                    setWelcomeAvailable(false);
                     removeWelcomeGestureListener();
                 }
                 finish();
@@ -1145,39 +1137,6 @@ export default function VoiceAssistant() {
         return results;
     };
 
-    const testSpeaker = () => {
-        // The short Web Audio tone checks the device output independently of
-        // the browser's speech engine; the spoken phrase then tests TTS itself.
-        try {
-            const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-            if (AudioContextClass) {
-                const context = new AudioContextClass();
-                const playTone = () => {
-                    try {
-                        const oscillator = context.createOscillator();
-                        const gain = context.createGain();
-                        oscillator.type = "sine";
-                        oscillator.frequency.value = 660;
-                        gain.gain.setValueAtTime(0.0001, context.currentTime);
-                        gain.gain.exponentialRampToValueAtTime(0.08, context.currentTime + 0.025);
-                        gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.28);
-                        oscillator.connect(gain);
-                        gain.connect(context.destination);
-                        oscillator.onended = () => { try { context.close(); } catch (_) {} };
-                        oscillator.start();
-                        oscillator.stop(context.currentTime + 0.3);
-                    } catch (_) {
-                        try { context.close(); } catch (_) {}
-                    }
-                };
-                const resumed = context.state === "suspended" ? context.resume() : null;
-                if (resumed?.then) resumed.then(playTone).catch(() => { try { context.close(); } catch (_) {} });
-                else playTone();
-            }
-        } catch (_) {}
-        speakRef.current?.("This is a Voxora speaker test. If you hear the tone but not this message, check your browser's speech voice settings.", { userGesture: true, preserveWelcome: true });
-    };
-
     const mute = () => {
         mutedRef.current = true;
         setMuted(true);
@@ -1205,15 +1164,13 @@ export default function VoiceAssistant() {
         if (welcomeEnabled) {
             welcomePendingRef.current = true;
             pendingSpeechRef.current = { text: WELCOME_TEXT, welcome: true };
-            setWelcomeAvailable(true);
         }
 
         const retryPendingSpeechFromGesture = (event) => {
             if (event.type === "keydown" && !["Enter", " "].includes(event.key)) return;
             const target = event.target;
-            if (target?.closest?.(".voxora-welcome-button, .voxora-test-speaker")) return;
             const dockButton = target?.closest?.(".voxora-control-dock button");
-            if (dockButton && !dockButton.classList.contains("voxora-dock-primary")) return;
+            if (dockButton && !dockButton.classList.contains("voxora-dock-primary") && !dockButton.classList.contains("voxora-footer-toggle")) return;
 
             if (speakingRef.current) return;
             const pending = pendingSpeechRef.current || (welcomePendingRef.current
@@ -1343,8 +1300,6 @@ export default function VoiceAssistant() {
         </div>
         {(!footerVisible || dockExpanded) && <>
             <button type="button" className="voxora-dock-primary" onClick={startListening}><span aria-hidden="true">🎙</span> {active && !muted ? "Listening on" : "Enable / Resume"}</button>
-            {welcomeAvailable && <button type="button" className="voxora-welcome-button" onClick={() => speakRef.current?.(WELCOME_TEXT, { welcome: true, userGesture: true })}>Play welcome</button>}
-            <button type="button" className="voxora-test-speaker" onClick={testSpeaker}>Test speaker</button>
             <button type="button" className="voxora-microphone-toggle" data-microphone-state={muted ? "muted" : active ? "listening" : "inactive"} aria-pressed={Boolean(active && !muted)} onClick={() => (muted || !active) ? startListening() : mute()}>{muted ? "Unmute microphone" : active ? "Mute microphone" : "Enable microphone"}</button>
             <button type="button" onClick={() => {
                 interruptSpeech();
@@ -1354,13 +1309,8 @@ export default function VoiceAssistant() {
             <button type="button" onClick={() => active ? endSession() : startListening()}><span aria-hidden="true">{active ? "Ⅱ" : "▶"}</span> {active ? "Pause access" : "Resume access"}</button>
         </>}
         {footerVisible && <button type="button" className="voxora-footer-toggle" aria-expanded={dockExpanded} onClick={() => {
-            if (!dockExpanded && welcomeAvailable) {
-                setDockExpanded(true);
-                speakRef.current?.(WELCOME_TEXT, { welcome: true, userGesture: true });
-            } else {
-                setDockExpanded((current) => !current);
-            }
-        }}>{dockExpanded ? "Collapse controls" : welcomeAvailable ? "Play welcome" : "Voxora controls"}</button>}
+            setDockExpanded((current) => !current);
+        }}>{dockExpanded ? "Collapse controls" : "Voxora controls"}</button>}
     </div>
     </>;
 }
