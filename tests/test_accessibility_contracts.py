@@ -41,7 +41,7 @@ class AccessibilityContractTests(unittest.TestCase):
         cls.voice = (
             ROOT / "src" / "components" / "VoiceAssistant.jsx"
         ).read_text(encoding="utf-8")
-        cls.css = (ROOT / "src" / "dashboard.css").read_text(encoding="utf-8")
+        cls.css = (ROOT / "src" / "styles" / "app.css").read_text(encoding="utf-8")
         cls.shell = (ROOT / "templates" / "spa.html").read_text(encoding="utf-8")
 
     def test_document_language_is_declared(self):

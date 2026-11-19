@@ -1,8 +1,32 @@
-.env
-.venv/
+# Python
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.egg-info/
+
+# Virtual environments
+.venv/
+venv/
+
+# Node and frontend build output
 node_modules/
+static/dist/
+dist/
+
+# Browser test output
 playwright-report/
 test-results/
+
+# Local configuration and logs
+.env
+.env.*
+!.env.example
+*.log
+
+# Operating system
+.DS_Store
+Thumbs.db

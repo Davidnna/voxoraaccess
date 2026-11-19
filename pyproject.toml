@@ -2,11 +2,3 @@
 line-length = 88
 target-version = ["py312"]
 include = "\\.pyi?$"
-
-[tool.ruff]
-line-length = 88
-target-version = "py312"
-
-[tool.ruff.format]
-indent-style = "space"
-quote-style = "double"

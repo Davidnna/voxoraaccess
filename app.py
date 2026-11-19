@@ -23,15 +23,17 @@ from psycopg.types.json import Jsonb
 from psycopg_pool import ConnectionPool
 from document_accessibility import extract_document
 
-BASE = Path(__file__).resolve().parent
 DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
+DB_SSLMODE = os.environ.get("VOXORA_DB_SSLMODE", "require").strip().lower() or "require"
 MAX_MB = int(os.environ.get("VOXORA_MAX_UPLOAD_MB", "20"))
 ALLOWED = {"pdf", "docx", "pptx", "txt", "md", "rtf", "csv", "odt", "ods", "odp"}
 CONVERTED_PREVIEW_EXTENSIONS = {"docx", "pptx", "rtf", "odt", "ods", "odp"}
 if not DATABASE_URL:
     raise RuntimeError(
-        "DATABASE_URL is required. Configure your Neon PostgreSQL connection string."
+        "DATABASE_URL is required. Configure a PostgreSQL connection string."
     )
+if DB_SSLMODE not in {"disable", "allow", "prefer", "require", "verify-ca", "verify-full"}:
+    raise RuntimeError("VOXORA_DB_SSLMODE must be a valid PostgreSQL sslmode.")
 app = Flask(__name__)
 app.config.update(
     SECRET_KEY=os.environ.get("VOXORA_SECRET_KEY") or secrets.token_hex(32),
@@ -64,7 +66,7 @@ def hybrid_row_factory(cursor):
 def conn():
     return pg_connect(
         DATABASE_URL,
-        sslmode="require",
+        sslmode=DB_SSLMODE,
         connect_timeout=int(os.environ.get("VOXORA_DB_CONNECT_TIMEOUT", "8")),
         row_factory=hybrid_row_factory,
     )
@@ -154,7 +156,7 @@ print("VOXORA_STARTUP stage=schema_init status=ready", flush=True)
 DB_POOL = ConnectionPool(
     conninfo=DATABASE_URL,
     kwargs={
-        "sslmode": "require",
+        "sslmode": DB_SSLMODE,
         "connect_timeout": int(os.environ.get("VOXORA_DB_CONNECT_TIMEOUT", "8")),
         "row_factory": hybrid_row_factory,
     },

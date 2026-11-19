@@ -1,9 +1,0 @@
-{% extends "base.html" %}
-{% block title %}Student dashboard{% endblock %}
-{% block content %}
-<div id="voxora-dashboard-root">
-    <div class="react-loading" role="status">Loading your dashboard…</div>
-</div>
-<script>window.voxoraCsrf = "{{ csrf_token() }}";</script>
-<script type="module" src="{{ url_for('static', filename='dist/app.js') }}"></script>
-{% endblock %}

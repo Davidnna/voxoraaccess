@@ -1,0 +1,29 @@
+# Source-control and local environments
+.git
+.github
+.venv
+venv
+__pycache__
+*.py[cod]
+.pytest_cache
+.mypy_cache
+.ruff_cache
+node_modules
+.env
+.env.*
+!.env.example
+
+# Tests and local reports
+tests
+playwright-report
+test-results
+.coverage
+htmlcov
+
+# Generated frontend assets are built inside the Docker build stage.
+static/dist
+dist
+
+# Local archives and logs
+*.zip
+*.log

@@ -267,12 +267,12 @@ class ProjectIntegrityTests(unittest.TestCase):
         self.assertIn("timed_fetchone(", source)
         self.assertIn("timed_fetchall(", source)
 
-    def test_react_shell_does_not_load_the_legacy_stylesheet(self):
+    def test_react_shell_uses_the_compiled_application_stylesheet(self):
         shell = (ROOT / "templates" / "spa.html").read_text(encoding="utf-8")
-        dashboard_css = (ROOT / "src" / "dashboard.css").read_text(encoding="utf-8")
-        self.assertNotIn("css/style.css", shell)
-        self.assertIn("font: 16px/1.65 Inter", dashboard_css)
-        self.assertIn("color: var(--react-teal)", dashboard_css)
+        app_css = (ROOT / "src" / "styles" / "app.css").read_text(encoding="utf-8")
+        self.assertIn("dist/app.css", shell)
+        self.assertIn("font: 16px/1.65 Inter", app_css)
+        self.assertIn("color: var(--react-teal)", app_css)
 
     def test_legacy_preview_hash_backfill_uses_the_same_access_scope(self):
         preview_function = next(
@@ -308,6 +308,53 @@ class ProjectIntegrityTests(unittest.TestCase):
         self.assertIn('--workers ${WEB_CONCURRENCY:-1}', dockerfile)
         self.assertIn('--workers 1', render)
         self.assertIn('exec gunicorn', dockerfile)
+
+    def test_database_ssl_mode_supports_local_and_production_postgres(self):
+        self.assertIn(
+            'DB_SSLMODE = os.environ.get("VOXORA_DB_SSLMODE", "require")',
+            self.backend,
+        )
+        self.assertIn("sslmode=DB_SSLMODE", self.backend)
+        self.assertIn('"sslmode": DB_SSLMODE', self.backend)
+        self.assertIn("VOXORA_DB_SSLMODE=disable", (ROOT / "README.md").read_text(encoding="utf-8"))
+
+    def test_frontend_styles_are_grouped_under_styles_directory(self):
+        main = (ROOT / "src" / "main.jsx").read_text(encoding="utf-8")
+        self.assertIn('import "./styles/app.css";', main)
+        self.assertTrue((ROOT / "src" / "styles" / "app.css").is_file())
+        self.assertFalse((ROOT / "src" / "dashboard.css").exists())
+
+    def test_only_the_active_react_shell_template_is_retained(self):
+        templates = ROOT / "templates"
+        self.assertEqual(
+            sorted(path.name for path in templates.glob("*.html")),
+            ["spa.html"],
+        )
+        self.assertFalse((ROOT / "static" / "js" / "voxora.js").exists())
+        self.assertFalse((ROOT / "static" / "css" / "style.css").exists())
+        shell = (templates / "spa.html").read_text(encoding="utf-8")
+        self.assertIn('id="voxora-app-root"', shell)
+
+    def test_only_current_deployment_configuration_is_retained(self):
+        self.assertFalse((ROOT / "vercel.json").exists())
+        self.assertTrue((ROOT / "render.yaml").is_file())
+        self.assertTrue((ROOT / "Dockerfile").is_file())
+        self.assertTrue((ROOT / ".dockerignore").is_file())
+
+    def test_generated_frontend_assets_are_not_committed(self):
+        ignore = (ROOT / ".gitignore").read_text(encoding="utf-8")
+        self.assertIn("static/dist/", ignore)
+        self.assertIn("node_modules/", ignore)
+
+    def test_flask_routes_render_through_the_single_react_shell(self):
+        wrapper = next(
+            node for node in self.backend_ast.body
+            if isinstance(node, ast.FunctionDef) and node.name == "render_template"
+        )
+        source = ast.get_source_segment(self.backend, wrapper)
+        self.assertIn('_flask_render_template(\n        "spa.html"', source)
+        self.assertIn("initial_path=request.path", source)
+        self.assertIn("csrf_value=csrf()", source)
 
 
 if __name__ == "__main__":

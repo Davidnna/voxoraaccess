@@ -1,81 +1,174 @@
 # Voxora Access
 
-Voxora Access is a voice-first digital accessibility and learning-resource platform designed to help visually impaired university students interact with online study materials. Its goal is to let students operate the website and explore learning content through natural speech, while keeping standard visual, keyboard and touch controls available.
+Voxora Access is a voice-first digital accessibility and learning-resource platform designed to help visually impaired university students access online study materials. It combines voice-operated website navigation, learning-resource management and structured document reading while retaining visual, keyboard and touch controls.
 
-## What the platform does
+## Platform capabilities
 
-### Voice-operated website assistance
+### Voice assistant
 
-- Provides a persistent voice assistant that remains mounted while users move between React routes.
-- Supports spoken navigation to public pages and signed-in workspace pages.
-- Can describe, explain, summarise or read visible page and document content when asked.
-- Can activate visible page controls, fill supported non-sensitive form fields, scroll pages and prepare the upload control.
-- Supports voice interruption (barge-in) during spoken responses when the browser confirms echo cancellation. The independent microphone monitor uses a conservative voice-activity threshold, and playback-time transcripts are also compared with Voxora's current and recently spoken segments to reject likely self-echo. The monitor analyses audio locally and does not record or upload it. If echo cancellation is unavailable or cannot be confirmed, Voxora safely pauses recognition during playback and resumes afterward; the Stop speaking control remains available. The voice controls are rendered in a document-level portal and remain fixed to the bottom of the browser viewport while pages scroll.
-- Uses the browser's speech recognition and speech synthesis capabilities. Microphone access requires the user's permission and a secure context (HTTPS, or localhost during development).
-- Supports multi-step browser tasks such as navigating between pages, activating visible controls, filling supported fields, selecting dropdown options, setting ordinary checkboxes and submitting supported forms. Voxora checks whether browser actions succeeded before reporting completion; ambiguous controls stop the task rather than selecting an arbitrary match.
-
-### Learning resources and document access
-
-- Allows registered students to upload and manage learning resources.
-- Supports PDF, DOCX, PPTX, TXT, MD, RTF, CSV, ODT, ODS and ODP uploads.
-- Converts DOCX and PPTX uploads to PDF previews with LibreOffice when conversion is available; the original file remains available for download.
-- Provides embedded previews for PDF, DOCX/PPTX-converted PDF, TXT, MD and CSV resources when the required preview data is available.
-- Includes resource discovery, a personal library, private sharing between existing accounts, and public/private visibility settings.
-- Extracts structured reading content from PDF, DOCX, PPTX, TXT, Markdown and CSV uploads. Scanned PDF pages can use local Tesseract OCR when the server's OCR engine and language data are installed.
-- Provides a text-first document reading view with semantic headings, nested lists and tables, adjustable text size, and read-aloud support for all extracted content (up to the configured extraction limit), split into short speech segments. Resource owners can refresh the reading view for existing uploads after processing improvements.
-- Recognises Word heading styles, inherited custom heading styles and explicit outline levels. Word list numbering and nesting levels are retained where the source identifies them.
-- Preserves explicit Word table header rows, including multiple leading header rows, and carries detected horizontal and vertical merged-cell spans into the reading view. CSV and PowerPoint tables are not assigned an assumed first-row header.
-- Keeps inline Word image descriptions in their position within the surrounding text. Word footnotes and endnotes are included in separate sections after the main document text; their original inline reference positions are not recreated.
-- Preserves PowerPoint bullet levels, merged table spans and available speaker notes. Speaker notes appear after the slide content and should be reviewed for presenter-only information before sharing.
-- Uses layout-aware PDF text extraction when supported by the installed pypdf version. This improves text positioning in many files but does not validate PDF tags or guarantee the reading order of complex multi-column layouts.
-- Provides user-facing document notes when headings, image descriptions, charts, diagrams, floating text boxes or other visual content may be missing or require checking against the original file.
-
-### Accounts and resource permissions
-
-- Provides student registration, sign-in and sign-out.
-- Separates each student's uploads, saved library and resources shared with them.
-- Checks resource access and ownership on the server before returning protected content or performing resource-management actions.
-- Requires explicit confirmation before Voxora permanently deletes a resource.
-- Treats a resource marked **public** as visible to signed-in Voxora members; uploaded resources are not available to signed-out visitors.
-
-### Application technology
-
-- React 19 and React Router for the browser application and client-side navigation.
-- Vite for building the frontend assets.
-- Flask for the backend, server-rendered application shell and JSON APIs.
-- PostgreSQL for accounts, resource metadata, sharing records, library entries and uploaded file data, with a bounded per-worker connection pool and indexed resource-list queries. Flask emits server-side request timing logs and a `Server-Timing` response header with application, database-query and connection-pool timing where applicable; these measurements are not displayed in the student interface. Document previews use private ETag revalidation so the browser can reuse a previously fetched preview only after the authenticated server confirms it is unchanged.
-- Groq's API for AI conversation and tool calling.
+- Persistent voice assistant across the React application.
+- Spoken navigation across public pages and signed-in workspace pages.
+- Assistance with understanding visible page content and extracted document text.
+- Support for activating visible controls and completing supported, non-sensitive form actions.
 - Browser speech recognition and speech synthesis for voice input and spoken output.
+- Spoken interruption during playback where the browser confirms the required echo-cancellation support. Voxora applies local microphone activity checks and transcript-to-speech comparison to reduce self-echo. When the required support is unavailable, it uses a safer listen-after-speaking fallback.
+- Voice controls remain fixed to the bottom of the browser viewport while the user scrolls.
 
-## Run Voxora Access locally
+Microphone access requires user permission and a secure browser context (HTTPS or `localhost`). Speech-recognition support and audio behaviour vary by browser, operating system and device.
 
-### 1. Install the prerequisites
+### Learning resources and accounts
 
-Install the following:
+- Student registration, sign-in and sign-out.
+- Upload and management of learning resources.
+- Personal library and resource discovery.
+- Private sharing between existing accounts.
+- Public and private resource visibility. Public resources are visible to signed-in Voxora members; they are not available to signed-out visitors.
+- Server-side ownership and access checks for protected resources.
+- Confirmation before permanently deleting a resource.
+
+Supported upload formats:
+
+- PDF
+- DOCX
+- PPTX
+- TXT
+- Markdown (`.md`)
+- CSV
+- RTF
+- ODT, ODS and ODP
+
+### Document processing and accessible reading
+
+- Structured text extraction for PDF, DOCX, PPTX, TXT, Markdown and CSV.
+- Local Tesseract OCR fallback for supported scanned PDF pages.
+- LibreOffice conversion for office and OpenDocument formats where the conversion tools are installed.
+- PDF previews for supported converted documents, while preserving the original upload for download.
+- Text-first reading views with headings, nested lists, tables and available image descriptions.
+- Read-aloud controls and adjustable speech rate for extracted document content.
+- Word heading and list hierarchy preservation where the source document exposes the relevant structure.
+- Explicit Word table headers and detected merged-cell spans.
+- PowerPoint list levels, merged table spans and available speaker notes.
+- Word footnotes and endnotes in separate sections after the main document text.
+
+Document extraction can omit or flatten complex content. It does not repair, tag, certify or guarantee the accessibility of the original file. See [Known limitations](#known-limitations).
+
+## Technology
+
+| Layer | Technology |
+|---|---|
+| Backend and HTTP API | Python 3.12, Flask |
+| Database | PostgreSQL, Psycopg 3 and Psycopg connection pool |
+| Frontend | React 19, React Router |
+| Frontend build | Vite |
+| Voice input/output | Browser Web Speech APIs |
+| AI assistant | Groq API |
+| PDF extraction | pypdf |
+| Word extraction | python-docx |
+| PowerPoint extraction | python-pptx |
+| OCR | Tesseract through pytesseract and Pillow |
+| Office conversion | LibreOffice |
+| Production server | Gunicorn |
+| Hosting configuration | Render Blueprint (`render.yaml`) or Docker |
+
+## Repository structure
+
+```text
+voxoraaccess/
+├── .github/
+│   └── workflows/             # Automated quality and formatting workflows
+├── src/
+│   ├── components/
+│   │   └── VoiceAssistant.jsx # Persistent voice assistant
+│   ├── data/                  # Navigation and page content
+│   ├── styles/
+│   │   └── app.css            # React application styles
+│   ├── App.jsx                # React routes and application views
+│   └── main.jsx               # React entry point
+├── static/
+│   ├── img/                   # Shared brand assets
+│   └── dist/                  # Generated Vite output; not committed
+├── templates/
+│   └── spa.html               # Single Flask/Jinja shell for the React app
+├── tests/
+│   ├── browser/               # Playwright and axe browser tests
+│   ├── test_accessibility_contracts.py
+│   ├── test_document_accessibility.py
+│   └── test_project_integrity.py
+├── app.py                     # Flask application and API entry point
+├── document_accessibility.py  # Document extraction and conversion logic
+├── index.html                 # Vite build entry
+├── package.json               # Frontend dependencies and build command
+├── requirements.txt           # Python dependencies
+├── render.yaml                # Render service configuration
+├── Dockerfile                 # Multi-stage container build
+├── apt.txt                    # System packages for Render's native runtime
+├── vite.config.js             # Vite output configuration
+├── pyproject.toml              # Python formatter configuration
+├── .env.example                # Environment variable template
+├── .gitignore
+├── .dockerignore
+├── .editorconfig
+└── README.md                   # Project documentation and setup guide
+```
+
+`static/dist/` is generated by Vite during the frontend build. Do not edit it manually or commit it. The Flask `render_template` wrapper sends browser routes through the single `templates/spa.html` React shell. The browser test suite has its own `package.json` because Playwright and axe are development-only dependencies and are kept separate from the production frontend.
+
+## Requirements
+
+Install the following before running the application locally:
 
 - Python 3.12 or later.
-- Node.js and npm.
-- PostgreSQL with an SSL-enabled connection, or a hosted PostgreSQL database such as Neon.
-- LibreOffice Writer, Calc and Impress if you want DOCX, PPTX, RTF and OpenDocument uploads converted to PDF previews and text extraction.
-- Tesseract OCR with the required language data (English is the default) if you want scanned PDF pages processed into selectable text.
+- Node.js 22 or later and npm.
+- PostgreSQL.
+- Git.
+- LibreOffice for DOCX, PPTX, RTF and OpenDocument PDF conversion.
+- Tesseract OCR and the required language data for scanned-PDF OCR.
 
-On Debian or Ubuntu, LibreOffice and the fonts used by the deployment image can be installed with:
+LibreOffice and Tesseract are optional at runtime, but document conversion and OCR features will be unavailable or limited if their executables or language data are missing.
+
+On Debian or Ubuntu, install the document-processing system packages with:
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y libreoffice-writer libreoffice-calc libreoffice-impress tesseract-ocr tesseract-ocr-eng fonts-liberation fonts-dejavu-core
+sudo apt-get install -y \
+  libreoffice-writer \
+  libreoffice-calc \
+  libreoffice-impress \
+  tesseract-ocr \
+  tesseract-ocr-eng \
+  fonts-liberation \
+  fonts-dejavu-core
 ```
 
-### 2. Get the source code
+On Windows, install PostgreSQL, LibreOffice and Tesseract using their platform installers. Ensure `psql`, `libreoffice` (or `soffice`) and `tesseract` are available on `PATH` if you intend to use those features.
 
-Clone the repository and enter the project directory:
+## Run Voxora Access locally
+
+### 1. Clone the repository
 
 ```bash
 git clone https://github.com/Davidnna/voxoraaccess.git
 cd voxoraaccess
 ```
 
-### 3. Create a Python environment and install backend dependencies
+### 2. Create a PostgreSQL database
+
+Create a database and a login role for the application. For example, open the PostgreSQL shell as an administrator:
+
+```sql
+CREATE ROLE voxora_user WITH LOGIN PASSWORD 'replace-with-a-strong-password';
+CREATE DATABASE voxora_access OWNER voxora_user;
+```
+
+Use the resulting connection string in the environment configuration:
+
+```text
+postgresql://voxora_user:replace-with-a-strong-password@localhost:5432/voxora_access
+```
+
+For a local PostgreSQL server without TLS, set `VOXORA_DB_SSLMODE=disable`. Hosted PostgreSQL services such as Neon normally require `VOXORA_DB_SSLMODE=require`.
+
+### 3. Create a Python virtual environment
 
 Linux or macOS:
 
@@ -95,127 +188,170 @@ python -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-### 4. Install frontend dependencies and build React
+### 4. Install frontend dependencies and build the application
 
-Run these commands from the project directory:
+Run from the repository root:
 
 ```bash
 npm install
 npm run build
 ```
 
-The Vite build writes the production frontend assets to `static/dist`. Flask serves the built application; run the build again after changing frontend source files.
+Vite compiles the React application into `static/dist/`. Flask serves these generated assets. Re-run `npm run build` after changing files under `src/`, `index.html` or `vite.config.js`.
 
 ### 5. Configure environment variables
 
-The application reads configuration from environment variables. It does **not** automatically load a `.env` file, so set the variables in the terminal or configure them in your development environment.
+The application reads environment variables from the process environment. It does not automatically load `.env`; `.env.example` is a reference template, not an automatic configuration loader. Copy its values into your terminal, IDE run configuration or hosting dashboard.
 
-Required:
+| Variable | Required | Default | Purpose |
+|---|---:|---|---|
+| `DATABASE_URL` | Yes | None | PostgreSQL connection string. |
+| `VOXORA_SECRET_KEY` | Strongly recommended | Generated at startup if absent | Stable Flask session-signing secret. Set a persistent value so sessions remain valid across restarts. |
+| `VOXORA_DB_SSLMODE` | No | `require` | PostgreSQL TLS mode. Use `disable` for a local non-TLS database; use `require` for hosted PostgreSQL. |
+| `VOXORA_DB_CONNECT_TIMEOUT` | No | `8` | Database connection timeout in seconds. |
+| `GROQ_API_KEY` | No | None | Enables AI assistant requests. Without it, non-AI application features remain available. |
+| `VOXORA_MAX_UPLOAD_MB` | No | `20` | Maximum upload size in megabytes. |
+| `VOXORA_HTTPS` | No | `1` | Set to `0` for local HTTP development; keep `1` behind production HTTPS. |
+| `VOXORA_DEBUG` | No | `0` | Enables Flask debug mode only when explicitly set to `1`. |
+| `VOXORA_MAX_EXTRACTED_TEXT_CHARS` | No | `200000` | Maximum extracted reading text stored per document. |
+| `VOXORA_MAX_DOCUMENT_PAGES` | No | `250` | Maximum PDF pages processed. |
+| `VOXORA_MAX_OCR_PAGES` | No | `6` | Maximum sparse PDF pages sent to OCR per document. |
+| `VOXORA_OCR_LANG` | No | `eng` | Tesseract language code. |
+| `VOXORA_OCR_TIMEOUT_SECONDS` | No | `5` | OCR timeout per page. |
+| `PORT` | Hosting-provided | Flask local default `5000`; Docker fallback `10000` | HTTP port used by the server. |
 
-- `DATABASE_URL`: PostgreSQL connection string. The application connects with `sslmode=require`; use a database endpoint that supports SSL.
-- `VOXORA_SECRET_KEY`: a long, random secret used to sign Flask sessions.
-
-For AI voice assistance:
-
-- `GROQ_API_KEY`: an API key for the Groq project and model configured by the backend. Without this key, the website's non-AI features can run, but AI assistant requests will be unavailable.
-
-Optional:
-
-- `VOXORA_MAX_UPLOAD_MB`: maximum upload size in megabytes; defaults to `20`.
-- `VOXORA_HTTPS`: set to `0` for local HTTP development. Use `1` when deployed behind HTTPS; the default is `1`.
-- `VOXORA_MAX_EXTRACTED_TEXT_CHARS`: maximum stored reading text per document; defaults to `200000`.
-- `VOXORA_MAX_DOCUMENT_PAGES`: maximum PDF pages processed; defaults to `250`.
-- `VOXORA_MAX_OCR_PAGES`: maximum sparse PDF pages sent to OCR per document; defaults to `6`.
-- `VOXORA_OCR_LANG`: Tesseract language code; defaults to `eng`.
-- `VOXORA_OCR_TIMEOUT_SECONDS`: OCR timeout per page; defaults to `5`.
-
-Generate a secret key with Python:
+Generate a secret key:
 
 ```bash
 python -c "import secrets; print(secrets.token_hex(32))"
 ```
 
-Linux or macOS example (replace the placeholder values):
+Linux or macOS example:
 
 ```bash
-export DATABASE_URL='postgresql://USER:PASSWORD@HOST/DBNAME?sslmode=require'
-export VOXORA_SECRET_KEY='paste-a-generated-random-secret-here'
-export GROQ_API_KEY='your-groq-api-key'
+export DATABASE_URL='postgresql://voxora_user:your-password@localhost:5432/voxora_access'
+export VOXORA_DB_SSLMODE=disable
+export VOXORA_SECRET_KEY='paste-the-generated-secret-here'
 export VOXORA_HTTPS=0
-export VOXORA_MAX_UPLOAD_MB=20
+export VOXORA_DEBUG=0
+export GROQ_API_KEY='your-groq-api-key'
 ```
 
 Windows PowerShell example:
 
 ```powershell
-$env:DATABASE_URL = 'postgresql://USER:PASSWORD@HOST/DBNAME?sslmode=require'
-$env:VOXORA_SECRET_KEY = 'paste-a-generated-random-secret-here'
-$env:GROQ_API_KEY = 'your-groq-api-key'
+$env:DATABASE_URL = 'postgresql://voxora_user:your-password@localhost:5432/voxora_access'
+$env:VOXORA_DB_SSLMODE = 'disable'
+$env:VOXORA_SECRET_KEY = 'paste-the-generated-secret-here'
 $env:VOXORA_HTTPS = '0'
-$env:VOXORA_MAX_UPLOAD_MB = '20'
+$env:VOXORA_DEBUG = '0'
+$env:GROQ_API_KEY = 'your-groq-api-key'
 ```
 
-Keep real credentials out of source control. The `.env.example` file contains placeholders only; do not put production secrets in it.
+`GROQ_API_KEY` may be omitted if AI assistant functionality is not needed. Never commit real credentials or place them in `.env.example`.
 
-### 6. Start the application
+### 6. Start the Flask application
 
-With the Python virtual environment active and environment variables set in the same terminal, run:
+With the Python virtual environment active and environment variables configured in the same terminal:
 
 ```bash
 flask --app app run --host 127.0.0.1 --port 5000
 ```
 
-Open [http://127.0.0.1:5000](http://127.0.0.1:5000) in a browser. The application creates its database tables when the Flask application starts.
+Open [http://127.0.0.1:5000](http://127.0.0.1:5000).
 
-Use localhost for microphone testing. On page load, Voxora checks whether microphone permission is already granted and resumes hands-free listening only in that case. If permission is not already granted, it waits for the user to select **Enable microphone** before requesting access. Speech recognition support differs between browsers; use a current browser with Web Speech API support for the best experience. On supported browsers, Voxora keeps recognition available during spoken responses only when the browser confirms echo cancellation on a separate microphone monitor. A local Web Audio analyser applies the V19 voice-activity threshold and requires sustained near-end speech before it corroborates an interruption. Recognition transcripts are additionally compared with the current and recent speech segments so Voxora does not act on words it has just spoken. A confirmed user utterance interrupts the current response; interim speech stops playback promptly, while the final transcript is processed as the command. If echo cancellation is not confirmed or the monitor cannot start, recognition pauses during playback and resumes afterward; use **Stop speaking** to stop speech manually in that fallback. The welcome is attempted on each full page load. Browsers may block automatic speech; when that happens, Voxora retries the pending welcome after the next eligible user interaction. There is no separate welcome replay or speaker-test button. If speech is not audible, check the device media volume, selected output device and browser audio settings.
+The application initializes its database schema when the Flask module starts. The database must be reachable before the server starts.
 
-## AI usage and rate limits
+Use `localhost` or `127.0.0.1` for local microphone testing. Browser microphone access requires a secure context and user permission. Use a current browser that supports the Web Speech APIs for voice recognition and speech synthesis.
 
-Voxora sends AI requests to Groq for conversational assistance and AI tool selection. Groq enforces model- and account-specific request and token quotas. When a quota is reached, Voxora displays the provider's available retry information and temporarily blocks repeated assistant requests. Local navigation and browser-side controls can continue to work without an AI request. Application-side optimisations reduce unnecessary context and tool cycles, but they cannot increase the quota assigned by Groq. The backend writes a `VOXORA_AI_USAGE` summary to the application log for each assistant interaction, including model passes, tool calls and the prompt, completion and total token counts reported by Groq. These measurements are for internal diagnostics and are not displayed in the student-facing interface. The backend only sends resource-management or browser-action tool definitions when the recent conversation indicates that those capabilities are relevant.
+## Run tests
 
-## Quality checks
-
-Run the Python syntax validation and source/document-extraction regression checks locally:
+Run the backend syntax and regression suite from the repository root:
 
 ```bash
 python -m compileall -q app.py document_accessibility.py tests
 python -m unittest discover -s tests -v
 ```
 
-The GitHub Actions workflow in `.github/workflows/quality.yml` runs those checks, builds the production Vite frontend, and then runs a separate Chromium browser suite. The browser suite uses axe-core to check WCAG 2.2 AA and accessibility best-practice rules across public and authentication routes in both signed-in and signed-out states, plus workspace and document routes. It also checks skip-link focus, client-side route focus, persistent voice controls, form labels, document-preview alternatives, semantic document reading blocks, read-aloud/stop controls, element-level horizontal overflow, voice-dock spacing, full voice-control visibility near the footer, footer branding and scroll-control overlap at common viewport widths. Document extraction unit tests cover PDF, DOCX, PPTX, text, Markdown, CSV, RTF/OpenDocument conversion, image-description warnings, extraction limits and OCR fallback behavior. Browser-test dependencies are isolated under `tests/browser` and are not part of the production frontend dependencies.
-
-To run the browser suite locally after building the frontend, install its test dependencies and Chromium:
+Build the frontend:
 
 ```bash
-npm install --no-audit --no-fund
 npm run build
+```
+
+Run the Playwright and axe browser suite:
+
+```bash
 cd tests/browser
 npm install --no-audit --no-fund
 npx playwright install chromium
 npm test
 ```
 
-Automated browser checks do not establish complete WCAG conformance. They do not replace testing with NVDA, JAWS, Narrator and mobile screen readers, testing real uploaded documents, or evaluation with visually impaired students.
+The browser suite checks application routes, responsive layout and selected accessibility contracts. GitHub Actions runs the backend tests, frontend production build and browser suite on pushes and pull requests to `main`.
 
-## Deployment
+Automated checks do not establish complete WCAG conformance. They do not replace testing with NVDA, JAWS, Narrator and mobile screen readers, testing representative uploaded documents, or evaluation with visually impaired students.
 
-The repository includes a `Dockerfile` and `render.yaml` for deployment. The Render service builds the React frontend, installs the Python dependencies and starts Flask with Gunicorn. Configure `DATABASE_URL` and `GROQ_API_KEY` as secret environment variables in the hosting dashboard. Keep `VOXORA_HTTPS=1` in an HTTPS deployment and use a stable `VOXORA_SECRET_KEY` so user sessions remain valid across restarts.
+## Deploy to Render
 
-## Current limitations
+The repository includes `render.yaml` for Render's native Python runtime.
 
-- Browser speech recognition and speech synthesis vary by browser, device and operating system. Voxora reports speaking after the browser fires the speech-start event, but that event cannot prove that the device physically emitted audible sound. If automatic welcome audio is blocked, Voxora retries it after the next eligible user interaction; there is no dedicated welcome replay or speaker-test control. Check device media volume, the selected output device and browser audio settings if speech is not audible. Microphone mute affects input only; it does not silence Voxora's spoken output. Where supported, Voxora uses a separate echo-cancelled microphone monitor as a local voice-activity gate while Web Speech recognition remains active. It also compares recognition text with the active and recent speech segments to reject likely playback echo. This is a best-effort browser audio design, not a guarantee that every device or acoustic environment will eliminate echo. If echo cancellation is not explicitly confirmed or the monitor is unavailable, Voxora falls back to half-duplex operation and voice interruption is unavailable until playback ends; the Stop speaking control remains available. The monitor stream is analysed locally and is not recorded or uploaded.
-- A browser cannot silently browse a student's computer or choose a local file. Voxora can open or focus the upload control, but the student must select the file in the native file picker.
-- Voxora does not fill password fields. Students enter their own credentials directly.
-- DOCX/PPTX conversion depends on LibreOffice and may not preserve every complex layout, font, animation or embedded object. The original upload remains available if conversion fails.
-- An embedded PDF preview is not automatically screen-reader accessible. The text-first reading view is an alternative generated from extracted content; it does not add tags to, repair or certify the original PDF.
-- OCR can misrecognise characters and cannot reliably reconstruct complex reading order, mathematics, charts, diagrams or image descriptions. Verify OCR output against the original. The server limits OCR to a configurable number of sparse pages per document.
-- Voxora read-aloud processes all text available in the extracted reading view, subject to the configured 200,000-character extraction limit. Long text is split at word boundaries into smaller speech segments. Source documents may still contain material that extraction did not capture.
-- DOCX and PPTX extraction preserves common headings, paragraphs, lists and tables, but some embedded objects, SmartArt, charts, equations, comments, tracked changes, speaker notes and complex layout may not be represented. RTF and OpenDocument formats are converted through LibreOffice PDF previews, so semantic structure may be flattened.
-- Existing uploads created before document extraction was introduced are marked as pending. The resource owner can use **Prepare / retry accessible text** or **Refresh accessible text** on the resource page to process them.
+1. Push the repository to GitHub.
+2. In Render, create a new Blueprint and select the repository.
+3. Allow Render to read `render.yaml` and configure the service.
+4. Set `DATABASE_URL` to the production PostgreSQL connection string.
+5. Set `GROQ_API_KEY` if AI assistant functionality is required.
+6. Keep `VOXORA_DB_SSLMODE=require` and `VOXORA_HTTPS=1` for the hosted service.
+7. Deploy and check the `/healthz` endpoint.
+
+The Render build command installs the Python and frontend dependencies and runs the Vite production build. `apt.txt` lists the system packages needed for LibreOffice conversion and Tesseract OCR. Render generates `VOXORA_SECRET_KEY` through the Blueprint configuration.
+
+Do not use a local database URL in the hosted service. The production database must be reachable from Render.
+
+## Build and run with Docker
+
+The Dockerfile uses a multi-stage build: Node.js compiles the frontend in the build stage, while the final Python image contains only the runtime and document-processing system packages.
+
+Build:
+
+```bash
+docker build -t voxora-access .
+```
+
+Run with an externally hosted PostgreSQL database:
+
+```bash
+docker run --rm \
+  -p 10000:10000 \
+  -e PORT=10000 \
+  -e DATABASE_URL='your-reachable-postgresql-connection-string' \
+  -e VOXORA_SECRET_KEY='your-persistent-secret' \
+  -e VOXORA_DB_SSLMODE=require \
+  -e VOXORA_HTTPS=1 \
+  -e GROQ_API_KEY='your-groq-api-key' \
+  voxora-access
+```
+
+The database hostname must be reachable from inside the container. Do not use `localhost` for a database running on the host machine unless the container is configured with the appropriate host-gateway address.
+
+## Known limitations
+
+- Browser speech recognition and synthesis differ across browsers and devices. Echo cancellation and spoken interruption are best-effort capabilities; when the required browser support is unavailable, Voxora uses a safer listen-after-speaking fallback.
+- OCR can misrecognise text and cannot reliably reconstruct complex reading order, mathematics, charts, diagrams or image descriptions. Verify OCR output against the original document.
+- PDF layout-aware extraction does not validate the PDF tag tree or guarantee correct reading order for complex multi-column or floating layouts.
+- DOCX and PPTX extraction preserves common structures but may omit or flatten embedded objects, SmartArt, charts, equations, comments, tracked changes, floating text boxes and other complex content.
+- Word footnotes and endnotes are presented after the main document text; their original inline reference positions are not recreated.
+- PowerPoint speaker notes are included after slide content when available. They may contain presenter-only information and should be reviewed before sharing.
+- LibreOffice conversion may not preserve every font, layout, animation or embedded object. The original uploaded file remains available for download.
+- Existing uploads keep their stored extracted content until their owner refreshes or reprocesses the accessible reading view.
+- An embedded PDF preview is not automatically screen-reader accessible. The text-first reading view is an alternative based on extracted content; it does not add tags to or repair the original PDF.
 - Resource content and AI search require a signed-in account. Public visibility means visible to signed-in members, not anonymous visitors.
-- The current project is a prototype and has not undergone an independent security, privacy or accessibility audit. Review the privacy and legal pages, hosting configuration, retention practices and applicable requirements before production use.
+- Voxora Access has not undergone an independent security, privacy or accessibility audit. Review deployment security, privacy, retention and applicable requirements before production use.
 
+## Operational notes
 
-## Startup and health checks
-
-The Render web service listens on `0.0.0.0:$PORT` and exposes `/healthz` as a lightweight HTTP liveness check. Gunicorn uses one worker by default on the Render free instance, with four request threads. PostgreSQL connections use a bounded eight-second connection timeout; startup logs identify schema initialization and connection-pool readiness. Configure `VOXORA_DB_CONNECT_TIMEOUT` only when a different bounded connection timeout is required.
+- `/healthz` is the lightweight HTTP health-check endpoint.
+- Gunicorn runs with one worker and four request threads by default in the Render configuration.
+- PostgreSQL connections use a bounded per-worker pool and a configurable connection timeout.
+- Generated frontend files are written to `static/dist/` at build time and should not be edited or committed.
+- Uploaded files and resource metadata are stored in PostgreSQL by the current application schema. Back up the database according to the hosting provider's recommended procedures.

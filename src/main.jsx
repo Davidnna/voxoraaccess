@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import AppRoutes from "./App.jsx";
 import VoiceAssistant from "./components/VoiceAssistant.jsx";
-import "./dashboard.css";
+import "./styles/app.css";
 
 function VoxoraApplication() {
     return (

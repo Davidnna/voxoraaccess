@@ -11,6 +11,10 @@ services:
         value: 3.12.8
       - key: VOXORA_HTTPS
         value: "1"
+      - key: VOXORA_DB_SSLMODE
+        value: require
+      - key: VOXORA_DB_CONNECT_TIMEOUT
+        value: "8"
       - key: VOXORA_MAX_UPLOAD_MB
         value: "20"
       - key: VOXORA_SECRET_KEY
