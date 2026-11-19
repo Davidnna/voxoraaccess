@@ -129,6 +129,16 @@ def init():
   ALTER TABLE resources ADD COLUMN IF NOT EXISTS preview_size_bytes BIGINT;
   CREATE TABLE IF NOT EXISTS shares(resource_id BIGINT REFERENCES resources(id) ON DELETE CASCADE,user_id BIGINT REFERENCES users(id) ON DELETE CASCADE,created_at TEXT NOT NULL,PRIMARY KEY(resource_id,user_id));
   CREATE TABLE IF NOT EXISTS library(user_id BIGINT REFERENCES users(id) ON DELETE CASCADE,resource_id BIGINT REFERENCES resources(id) ON DELETE CASCADE,created_at TEXT NOT NULL,PRIMARY KEY(user_id,resource_id));
+  CREATE TABLE IF NOT EXISTS reading_progress(
+      user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      resource_id BIGINT NOT NULL REFERENCES resources(id) ON DELETE CASCADE,
+      next_segment_index INTEGER NOT NULL DEFAULT 0 CHECK(next_segment_index >= 0),
+      total_segments INTEGER NOT NULL DEFAULT 0 CHECK(total_segments >= 0),
+      reading_fingerprint TEXT NOT NULL,
+      completed BOOLEAN NOT NULL DEFAULT FALSE,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY(user_id,resource_id)
+  );
   CREATE INDEX IF NOT EXISTS idx_resources_public ON resources(visibility,created_at);
   CREATE INDEX IF NOT EXISTS idx_resources_sha256 ON resources(sha256);
   CREATE INDEX IF NOT EXISTS idx_resources_owner_created ON resources(owner_id,created_at DESC);
@@ -366,6 +376,23 @@ def resource(rid):
     if not r:
         abort(404)
     return r
+
+
+def reading_content_fingerprint(extracted_blocks, extracted_text, truncated=False):
+    """Version the reading-segment contract so old positions reset after content changes."""
+    blocks = extracted_blocks or []
+    if isinstance(blocks, str):
+        try:
+            blocks = json.loads(blocks)
+        except (TypeError, ValueError):
+            blocks = []
+    content = json.dumps(
+        {"blocks": blocks, "text": extracted_text or "", "truncated": bool(truncated)},
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(("voxora-reader-v1:" + content).encode("utf-8")).hexdigest()
 
 
 @app.get("/healthz")
@@ -835,6 +862,111 @@ def api_extract_resource(rid):
     return response
 
 
+@app.post("/api/resource/<int:rid>/reading-progress")
+@login_required
+def api_save_reading_progress(rid):
+    current = user()
+    r = resource(rid)
+    if not accessible(r, current):
+        abort(404)
+
+    body = request.get_json(silent=True) or {}
+    next_index = body.get("next_segment_index")
+    total_segments = body.get("total_segments")
+    if (
+        isinstance(next_index, bool)
+        or not isinstance(next_index, int)
+        or isinstance(total_segments, bool)
+        or not isinstance(total_segments, int)
+        or total_segments < 1
+        or total_segments > 100000
+        or next_index < 0
+        or next_index > total_segments
+    ):
+        return jsonify({"error": "The reading position is invalid."}), 400
+
+    stored = timed_fetchone(
+        "SELECT extracted_blocks, extracted_text, extraction_truncated FROM resources WHERE id=%s",
+        (rid,),
+    )
+    if not stored:
+        abort(404)
+    fingerprint = reading_content_fingerprint(
+        stored["extracted_blocks"],
+        stored["extracted_text"],
+        stored["extraction_truncated"],
+    )
+    supplied_fingerprint = str(body.get("reading_fingerprint") or "")
+    if not supplied_fingerprint or not secrets.compare_digest(fingerprint, supplied_fingerprint):
+        return jsonify({"error": "The document reading view has changed. Refresh it before continuing."}), 409
+
+    completed = next_index >= total_segments
+    reset = bool(body.get("reset"))
+    timestamp = now()
+    if reset:
+        timed_execute(
+            """
+            INSERT INTO reading_progress(
+                user_id, resource_id, next_segment_index, total_segments,
+                reading_fingerprint, completed, updated_at
+            ) VALUES(%s,%s,%s,%s,%s,%s,%s)
+            ON CONFLICT(user_id,resource_id) DO UPDATE SET
+                next_segment_index=EXCLUDED.next_segment_index,
+                total_segments=EXCLUDED.total_segments,
+                reading_fingerprint=EXCLUDED.reading_fingerprint,
+                completed=EXCLUDED.completed,
+                updated_at=EXCLUDED.updated_at
+            """,
+            (
+                current["id"], rid, next_index, total_segments,
+                fingerprint, completed, timestamp,
+            ),
+        )
+    else:
+        timed_execute(
+            """
+            INSERT INTO reading_progress(
+                user_id, resource_id, next_segment_index, total_segments,
+                reading_fingerprint, completed, updated_at
+            ) VALUES(%s,%s,%s,%s,%s,%s,%s)
+            ON CONFLICT(user_id,resource_id) DO UPDATE SET
+                next_segment_index=CASE
+                    WHEN reading_progress.reading_fingerprint <> EXCLUDED.reading_fingerprint
+                    THEN EXCLUDED.next_segment_index
+                    ELSE LEAST(
+                        EXCLUDED.total_segments,
+                        GREATEST(reading_progress.next_segment_index, EXCLUDED.next_segment_index)
+                    )
+                END,
+                total_segments=EXCLUDED.total_segments,
+                reading_fingerprint=EXCLUDED.reading_fingerprint,
+                completed=CASE
+                    WHEN reading_progress.reading_fingerprint <> EXCLUDED.reading_fingerprint
+                    THEN EXCLUDED.completed
+                    ELSE (
+                        LEAST(
+                            EXCLUDED.total_segments,
+                            GREATEST(reading_progress.next_segment_index, EXCLUDED.next_segment_index)
+                        ) >= EXCLUDED.total_segments
+                    )
+                END,
+                updated_at=EXCLUDED.updated_at
+            """,
+            (
+                current["id"], rid, next_index, total_segments,
+                fingerprint, completed, timestamp,
+            ),
+        )
+    db().commit()
+    response = jsonify({
+        "next_segment_index": next_index,
+        "total_segments": total_segments,
+        "completed": completed,
+    })
+    response.headers["Cache-Control"] = "private, no-store"
+    return response
+
+
 @app.route("/resource/<int:rid>/read")
 @login_required
 def read(rid):
@@ -1120,9 +1252,28 @@ def site_data():
                 "in_library": bool(r["in_library"]),
             }
             if reading_view:
+                reading_blocks = r["extracted_blocks"] or []
+                reading_fingerprint = reading_content_fingerprint(reading_blocks, extracted_text, r["extraction_truncated"])
+                saved_progress = timed_fetchone(
+                    """
+                    SELECT next_segment_index, total_segments, completed, updated_at
+                    FROM reading_progress
+                    WHERE user_id=%s AND resource_id=%s AND reading_fingerprint=%s
+                    """,
+                    (uid, int(match.group(1)), reading_fingerprint),
+                )
                 payload["resource"]["reading_text"] = extracted_text[:200000]
                 payload["resource"]["reading_truncated"] = bool(r["extraction_truncated"])
-                payload["resource"]["reading_blocks"] = r["extracted_blocks"] or []
+                payload["resource"]["reading_blocks"] = reading_blocks
+                payload["resource"]["reading_fingerprint"] = reading_fingerprint
+                payload["resource"]["reading_progress"] = (
+                    dict(saved_progress) if saved_progress else {
+                        "next_segment_index": 0,
+                        "total_segments": 0,
+                        "completed": False,
+                        "updated_at": None,
+                    }
+                )
     response = jsonify(payload)
     response.headers["Cache-Control"] = "private, no-store"
     return response

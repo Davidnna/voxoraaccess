@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { Link, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { accountNav, legal, nav } from "./data/navigation.js";
 import { pageCopy, policyCopy } from "./data/pageContent.js";
+import DocumentReader from "./components/DocumentReader.jsx";
 
 function AppLink({ href, ...props }) {
     const isExternal = !href || href.startsWith("#") || /^(https?:|mailto:|tel:)/i.test(href) ||
@@ -12,103 +13,6 @@ function AppLink({ href, ...props }) {
     return <Link to={href} {...props}/>;
 }
 
-
-function DocumentBlocks({ blocks, fallbackText = "" }) {
-    if (!Array.isArray(blocks) || !blocks.length) {
-        const paragraphs = String(fallbackText || "").split(/\n{2,}/).map((part) => part.trim()).filter(Boolean);
-        return paragraphs.length
-            ? <>{paragraphs.map((paragraph, index) => <p key={index}>{paragraph}</p>)}</>
-            : <p>No readable text is available for this document yet.</p>;
-    }
-
-    const buildListTree = (items) => {
-        const roots = [];
-        const stack = [{ level: -1, children: roots }];
-        items.forEach((item) => {
-            const requestedLevel = Math.max(0, Math.min(8, Number(item.level) || 0));
-            const level = Math.min(requestedLevel, stack.length - 1);
-            while (stack.length > level + 1) stack.pop();
-            const node = { ...item, children: [] };
-            stack[stack.length - 1].children.push(node);
-            stack.push({ level, children: node.children });
-        });
-        return roots;
-    };
-
-    const renderListTree = (nodes, keyPrefix = "list") => {
-        const groups = [];
-        nodes.forEach((node) => {
-            const ordered = Boolean(node.ordered);
-            const last = groups[groups.length - 1];
-            if (!last || last.ordered !== ordered) groups.push({ ordered, items: [node] });
-            else last.items.push(node);
-        });
-        return groups.map((group, groupIndex) => {
-            const List = group.ordered ? "ol" : "ul";
-            return <List key={`${keyPrefix}-${groupIndex}`}>{group.items.map((item, itemIndex) => (
-                <li key={`${keyPrefix}-${groupIndex}-${itemIndex}`}>
-                    {item.text}
-                    {item.children.length > 0 && renderListTree(item.children, `${keyPrefix}-${groupIndex}-${itemIndex}`)}
-                </li>
-            ))}</List>;
-        });
-    };
-
-    const rendered = [];
-    let index = 0;
-    while (index < blocks.length) {
-        const block = blocks[index] || {};
-        if (block.type === "list_item") {
-            const items = [];
-            while (index < blocks.length && blocks[index]?.type === "list_item") {
-                items.push(blocks[index]);
-                index += 1;
-            }
-            rendered.push(<React.Fragment key={`list-${index}`}>{renderListTree(buildListTree(items), `list-${index}`)}</React.Fragment>);
-            continue;
-        }
-        if (block.type === "heading") {
-            const level = Math.max(2, Math.min(6, Number(block.level) || 2));
-            const Heading = `h${level}`;
-            rendered.push(<Heading key={index}>{block.text}</Heading>);
-        } else if (block.type === "paragraph") {
-            rendered.push(<p key={index}>{block.text}</p>);
-        } else if (block.type === "image_description") {
-            rendered.push(<p key={index}><strong>Image description:</strong> {block.text}</p>);
-        } else if (block.type === "image_placeholder") {
-            rendered.push(<p className="react-accessibility-note" key={index}>{block.text}</p>);
-        } else if (block.type === "speaker_notes") {
-            rendered.push(<section className="react-speaker-notes" aria-label="Speaker notes" key={index}><h4>Speaker notes</h4><p>{block.text}</p></section>);
-        } else if (block.type === "table") {
-            const rows = Array.isArray(block.rows) ? block.rows : [];
-            const headerRows = Math.max(0, Math.min(rows.length, Number(block.header_rows) || 0));
-            const cellSpans = Array.isArray(block.cell_spans) ? block.cell_spans : [];
-            rendered.push(
-                <div className="react-reader-table-wrap" key={index} role="region" tabIndex={0} aria-label={`Scrollable table: ${block.caption || "Document table"}`}>
-                    <table>
-                        <caption>{block.caption || "Document table"}</caption>
-                        <tbody>{rows.map((row, rowIndex) => {
-                            const isHeader = rowIndex < headerRows;
-                            return <tr key={rowIndex}>{row.map((cell, cellIndex) => {
-                                const metadata = cellSpans[rowIndex]?.[cellIndex] || null;
-                                if (metadata?.covered_by) return null;
-                                const spans = {
-                                    colSpan: metadata?.colspan > 1 ? metadata.colspan : undefined,
-                                    rowSpan: metadata?.rowspan > 1 ? metadata.rowspan : undefined,
-                                };
-                                return isHeader
-                                    ? <th scope="col" key={cellIndex} {...spans}>{cell}</th>
-                                    : <td key={cellIndex} {...spans}>{cell}</td>;
-                            })}</tr>;
-                        })}</tbody>
-                    </table>
-                </div>
-            );
-        }
-        index += 1;
-    }
-    return <>{rendered}</>;
-}
 
 function App() {
     const location = useLocation();
@@ -265,7 +169,17 @@ function App() {
     else if(path==="/account")content=<><p className="react-eyebrow">ACCOUNT MANAGEMENT</p><h1>Your account</h1><p>Review the details associated with your Voxora Access account.</p><section className="react-account-panel"><div className="react-account-avatar" aria-hidden="true">{(user?.name||"U").trim().charAt(0).toUpperCase()}</div><div><span className="react-account-label">ACCOUNT HOLDER</span><h2>{user?.name||"User"}</h2><p>{user?.email||""}</p></div></section><div className="react-account-settings"><article><div><h2>Personal information</h2><p>Your profile name and email address are used to identify your account.</p></div><dl><div><dt>Full name</dt><dd>{user?.name||"Not available"}</dd></div><div><dt>Email address</dt><dd>{user?.email||"Not available"}</dd></div></dl></article><article><div><h2>Workspace preferences</h2><p>Manage how you access and read learning resources.</p></div><AppLink className="react-secondary-button" href="/preferences">Open preferences</AppLink></article><article><div><h2>Security</h2><p>Always sign out when using a shared or public device. Password management is handled through the sign-in process.</p></div><form method="post" action="/signout" onSubmit={handleSignout}><input type="hidden" name="_csrf_token" value={csrf}/><button className="react-danger-button">Sign out of this account</button></form></article></div></>;
     else if(path==="/upload")content=<><p className="react-eyebrow">SHARE KNOWLEDGE</p><h1>Upload a resource</h1><p>Upload study materials for your own use or share them with signed-in Voxora members. Uploaded resources are never available to signed-out visitors.</p><form className="react-form" method="post" encType="multipart/form-data"><input type="hidden" name="_csrf_token" value={csrf}/><FormField label="Choose a file" name="file" type="file" required accept=".pdf,.docx,.pptx,.txt,.md,.rtf,.csv,.odt,.ods,.odp"/><small>PDF, DOCX, PPTX, TXT, MD, RTF, CSV, ODT, ODS or ODP. Maximum 20 MB by default.</small><FormField label="Resource title" name="title" maxLength="160" placeholder="e.g. Introduction to Biology"/><label className="react-field">Short description<textarea name="description" rows="4" maxLength="1000"/></label><small>Public means visible to signed-in Voxora members. Private means only you and accounts you explicitly share with.</small><fieldset><legend>Who can access it?</legend><label><input type="radio" name="visibility" value="public" defaultChecked/> All signed-in members</label><label><input type="radio" name="visibility" value="private"/> Private</label></fieldset><button className="react-primary-button">Upload resource</button></form></>;
     else if(path==="/my-resources"||path==="/library"||path==="/shared-with-me")content=<><p className="react-eyebrow">YOUR WORKSPACE</p><h1>{path==="/my-resources"?"My uploads":path==="/library"?"My Library":"Shared with me"}</h1><p>{path==="/my-resources"?"Manage resources you've uploaded.":path==="/library"?"Saved resources, ready when you are.":"Private resources shared with your account."}</p><Resources items={data.resources} empty="Nothing to show here yet."/></>;
-    else if(path.endsWith("/read")&&data.resource){const r=data.resource;const hasText=Boolean(r.reading_text);const statusLabel={ready:"Reading view ready",partial:"Reading view has limitations",needs_ocr:"Text recognition needed",failed:"Reading view unavailable",pending:"Reading view not prepared"}[r.extraction_status]||"Reading view status unavailable";content=<><p><AppLink href={`/resource/${r.id}`}>Back to resource</AppLink></p><p className="react-eyebrow">ACCESSIBLE READING VIEW</p><h1>{r.title}</h1><p className="react-reader-intro">This reading view presents document content in a simpler format. Some features of the original may not be preserved.</p><div className="react-reader-toolbar" role="group" aria-label="Document reading controls"><button type="button" className="react-primary-button" disabled={!hasText} onClick={()=>window.dispatchEvent(new Event("voxora:read-document"))}>Read aloud with Voxora</button><button type="button" className="react-secondary-button" onClick={()=>window.dispatchEvent(new Event("voxora:stop-reading"))}>Stop reading</button><label htmlFor="reader-text-size">Text size</label><input id="reader-text-size" type="range" min="100" max="180" step="10" value={readerTextSize} onChange={event=>setReaderTextSize(Number(event.target.value))} aria-valuetext={`${readerTextSize} percent`}/><output htmlFor="reader-text-size">{readerTextSize}%</output><AppLink href={`/resource/${r.id}/download`}>Download original</AppLink></div><section className={`react-extraction-status status-${r.extraction_status||"pending"}`} aria-labelledby="extraction-status-title"><h2 id="extraction-status-title">{statusLabel}</h2>{r.page_count&&<p>Pages or slides processed: {r.page_count}</p>}{r.extraction_warnings?.length>0&&<><h3>Document notes</h3><ul>{r.extraction_warnings.map((warning,index)=><li key={index}>{warning}</li>)}</ul></>}{hasText&&r.is_owner&&<button type="button" className="react-secondary-button" disabled={extracting} onClick={()=>prepareAccessibleText(r.id)}>{extracting?"Preparing reading view…":"Refresh reading view"}</button>}</section>{extractMessage&&<p className="react-extraction-message" role="status" aria-live="polite">{extractMessage}</p>}{!hasText&&<section className="react-document-fallback"><h2>A reading view is not available yet</h2><p>The original document is still available. The owner can try preparing the reading view again.</p>{r.is_owner&&<button type="button" className="react-primary-button" disabled={extracting} onClick={()=>prepareAccessibleText(r.id)}>{extracting?"Preparing reading view…":"Prepare reading view"}</button>}<AppLink href={`/resource/${r.id}/download`}>Download original document</AppLink></section>}{hasText&&<article className="react-document-reading-content" aria-labelledby="document-reading-title" style={{"--reader-text-size":`${readerTextSize}%`}}><h2 id="document-reading-title">Document content</h2><DocumentBlocks blocks={r.reading_blocks} fallbackText={r.reading_text}/></article>}{(r.reading_truncated||r.extraction_truncated)&&<p className="react-accessibility-note">Only part of this document is available in the reading view. Download the original to access the complete document.</p>}<p className="react-accessibility-note">Scanned text, diagrams, equations, charts and complex layouts may not be represented accurately. Check important information against the original document.</p></>}
+    else if(path.endsWith("/read")&&data.resource){
+        content=<DocumentReader
+            resource={data.resource}
+            csrf={csrf}
+            extracting={extracting}
+            extractMessage={extractMessage}
+            prepareAccessibleText={prepareAccessibleText}
+            readerTextSize={readerTextSize}
+            setReaderTextSize={setReaderTextSize}
+        />;
+    }
     else if(path.startsWith("/resource/")&&data.resource){const r=data.resource;const ext=(r.extension||"").toLowerCase();const previewable=["pdf","txt","md","csv"].includes(ext)||( ["docx","pptx","rtf","odt","ods","odp"].includes(ext)&&r.preview_available);const isPdf=["pdf","docx","pptx","rtf","odt","ods","odp"].includes(ext);const statusLabel={ready:"Reading view ready",partial:"Reading view has limitations",needs_ocr:"Text recognition needed",failed:"Reading view unavailable",pending:"Reading view not prepared"}[r.extraction_status]||"Reading view status unavailable";content=<><p><AppLink href="/">Explore</AppLink> / {r.title}</p><p className="react-eyebrow">{r.extension.toUpperCase()} DOCUMENT</p><h1>{r.title}</h1><p>{r.description||"No description provided."}</p><p>Owner: {r.owner_name} · {Math.round(r.size_bytes/1024)} KB · {r.visibility==="public"?"Visible to signed-in members":"Private"}</p><div className="react-actions"><AppLink className="react-primary-button" href={`/resource/${r.id}/read`}>Open accessible reading view</AppLink><AppLink href={`/resource/${r.id}/download`}>Download original</AppLink></div><section className="react-document-panel" aria-labelledby="document-preview-title"><div className="react-document-heading"><div><h2 id="document-preview-title">Original document preview</h2><p>Office documents may appear as a PDF preview. The reading view is provided separately below.</p></div><div className="react-actions">{previewable&&<AppLink href={`/resource/${r.id}/preview`} target="_blank" rel="noopener noreferrer" className="react-secondary-button">Open preview in a new tab</AppLink>}<AppLink href={`/resource/${r.id}/download`}>Download original</AppLink></div></div>{previewable?<iframe className="react-document-frame" title={(isPdf?"PDF preview of "+r.extension.toUpperCase()+": ":"Text document: ")+r.title} aria-describedby="document-preview-help" src={`/resource/${r.id}/preview`} />:<div className="react-document-fallback"><h3>PDF preview is not available</h3><p>A preview could not be prepared for this file. You can still download the original document.</p><AppLink className="react-primary-button" href={`/resource/${r.id}/download`}>Download {r.extension.toUpperCase()}</AppLink></div>}</section><p id="document-preview-help" className="react-accessibility-note">The embedded preview uses your browser's document viewer. If it is difficult to navigate with your screen reader, use the accessible reading view or download the original. The PDF preview is not a substitute for checking the source document's tags and reading order.</p><section className={`react-extraction-status status-${r.extraction_status||"pending"}`} aria-labelledby="resource-extraction-title"><h2 id="resource-extraction-title">{statusLabel}</h2>{r.text_excerpt?<p>{r.text_excerpt}{r.text_truncated?" …":""}</p>:<p>No extracted text is available yet.</p>}{r.extraction_warnings?.length>0&&<ul>{r.extraction_warnings.map((warning,index)=><li key={index}>{warning}</li>)}</ul>}{r.is_owner&&<button type="button" className="react-secondary-button" disabled={extracting} onClick={()=>prepareAccessibleText(r.id)}>{extracting?"Preparing reading view…":r.extraction_status==="ready"?"Refresh reading view":"Prepare / retry reading view"}</button>}{extractMessage&&<p role="status" aria-live="polite">{extractMessage}</p>}</section>{user&&<form method="post" action={`/resource/${r.id}/library`}><input type="hidden" name="_csrf_token" value={csrf}/><button className="react-primary-button">{r.in_library?"Remove from My Library":"Add to My Library"}</button></form>}{r.is_owner&&<><h2>Share this resource</h2><form method="post" action={`/resource/${r.id}/share`} className="react-form"><input type="hidden" name="_csrf_token" value={csrf}/><FormField label="Account email" name="email" type="email" required placeholder="student@example.edu"/><button className="react-primary-button">Share</button></form><form method="post" action={`/resource/${r.id}/delete`} onSubmit={e=>{if(!confirm("Delete this resource permanently?"))e.preventDefault()}}><input type="hidden" name="_csrf_token" value={csrf}/><button className="react-danger-button">Delete resource</button></form></>}</>}
     else if(pageCopy[path]){const [eyebrow,title,lede,items]=pageCopy[path];content=<><p className="react-eyebrow">{eyebrow.toUpperCase()}</p><h1>{title}</h1><p className="react-lede">{lede}</p><Cards items={items}/><AppLink className="react-primary-button" href="/register">Get started</AppLink></>}
     else if(policyCopy[path]){const [title,...paragraphs]=policyCopy[path];content=<article className="react-policy"><p className="react-eyebrow">PLATFORM POLICIES</p><h1>{title}</h1><p className="react-muted">Last updated: 31 October 2026</p>{paragraphs.map((p,i)=><p key={i}>{p}</p>)}</article>}

@@ -44,7 +44,13 @@ Supported upload formats:
 - LibreOffice conversion for office and OpenDocument formats where the conversion tools are installed.
 - PDF previews for supported converted documents, while preserving the original upload for download.
 - Text-first reading views with headings, nested lists, tables and available image descriptions.
-- Read-aloud controls and adjustable speech rate for extracted document content.
+- Continuous, segment-based reading of long documents, with each paragraph, list item and table row spoken in sequence.
+- Voice and on-screen navigation between document sections and headings.
+- Resume reading from the last completed segment, with progress saved to the signed-in user's account.
+- Start-over, current-section, previous-section and next-section controls.
+- Table reading that announces marked column headings and then reads each data row with its column context. Tables without marked headings are read using neutral column numbers rather than guessed labels.
+- Current reading position is highlighted in the text-first view and scrolled into view.
+- Adjustable reading text size.
 - Word heading and list hierarchy preservation where the source document exposes the relevant structure.
 - Explicit Word table headers and detected merged-cell spans.
 - PowerPoint list levels, merged table spans and available speaker notes.
@@ -78,8 +84,11 @@ voxoraaccess/
 │   └── workflows/             # Automated quality and formatting workflows
 ├── src/
 │   ├── components/
+│   │   ├── DocumentReader.jsx # Structured reading controls and document rendering
 │   │   └── VoiceAssistant.jsx # Persistent voice assistant
-│   ├── data/                  # Navigation and page content
+│   ├── data/
+│   │   ├── reader.js          # Document segment and section navigation
+│   │   └── ...                # Navigation and page content
 │   ├── styles/
 │   │   └── app.css            # React application styles
 │   ├── App.jsx                # React routes and application views
@@ -91,9 +100,11 @@ voxoraaccess/
 │   └── spa.html               # Single Flask/Jinja shell for the React app
 ├── tests/
 │   ├── browser/               # Playwright and axe browser tests
+│   ├── reader.test.mjs        # Reading segment and table narration tests
 │   ├── test_accessibility_contracts.py
 │   ├── test_document_accessibility.py
-│   └── test_project_integrity.py
+│   ├── test_project_integrity.py
+│   └── test_reader_contracts.py
 ├── app.py                     # Flask application and API entry point
 ├── document_accessibility.py  # Document extraction and conversion logic
 ├── index.html                 # Vite build entry
@@ -260,7 +271,7 @@ flask --app app run --host 127.0.0.1 --port 5000
 
 Open [http://127.0.0.1:5000](http://127.0.0.1:5000).
 
-The application initializes its database schema when the Flask module starts. The database must be reachable before the server starts.
+The application initializes its database schema when the Flask module starts. The database must be reachable before the server starts. The initialization also creates the account-scoped `reading_progress` table used to save each student's place in a document; no manual migration command is required.
 
 Use `localhost` or `127.0.0.1` for local microphone testing. Browser microphone access requires a secure context and user permission. Use a current browser that supports the Web Speech APIs for voice recognition and speech synthesis.
 
@@ -271,6 +282,7 @@ Run the backend syntax and regression suite from the repository root:
 ```bash
 python -m compileall -q app.py document_accessibility.py tests
 python -m unittest discover -s tests -v
+npm run test:reader
 ```
 
 Build the frontend:
@@ -288,7 +300,7 @@ npx playwright install chromium
 npm test
 ```
 
-The browser suite checks application routes, responsive layout and selected accessibility contracts. GitHub Actions runs the backend tests, frontend production build and browser suite on pushes and pull requests to `main`.
+The browser suite checks application routes, responsive layout and selected accessibility contracts. GitHub Actions runs the backend tests, Node-based reading-segment tests, frontend production build and browser suite on pushes and pull requests to `main`.
 
 Automated checks do not establish complete WCAG conformance. They do not replace testing with NVDA, JAWS, Narrator and mobile screen readers, testing representative uploaded documents, or evaluation with visually impaired students.
 
@@ -333,6 +345,26 @@ docker run --rm \
 ```
 
 The database hostname must be reachable from inside the container. Do not use `localhost` for a database running on the host machine unless the container is configured with the appropriate host-gateway address.
+
+## Document reading commands
+
+On an accessible document reading page, students can use the on-screen controls or say:
+
+| Voice command | Action |
+|---|---|
+| "Read document" or "Continue reading" | Continue from the saved place. |
+| "Start over" or "Read from the beginning" | Restart the document. |
+| "Next section" or "Next chapter" | Start reading the next detected heading section. |
+| "Previous section" | Start reading the previous detected heading section. |
+| "Read this section" | Read the section containing the current reading position. |
+| "Go to section introduction" | Find a section by its heading text. |
+| "Read this table" | Read the table at or immediately before the current position. |
+| "Read next table" | Move to and read the next table. |
+| "Stop reading" | Stop speech; the last completed segment remains the resume point. |
+
+Reading progress is stored per signed-in account and resource. It is tied to a versioned fingerprint of the extracted reading content; if the document is reprocessed or its extracted content changes, Voxora does not apply an old position to the changed reading view. The student can start again from the beginning.
+
+Progress advances after each completed reading segment. If speech is interrupted part-way through a paragraph or table row, resuming starts that segment again rather than skipping content.
 
 ## Known limitations
 

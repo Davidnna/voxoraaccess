@@ -39,6 +39,9 @@ jobs:
       - name: Install frontend dependencies
         run: npm install --no-audit --no-fund
 
+      - name: Run intelligent reader unit tests
+        run: npm run test:reader
+
       - name: Build production frontend
         run: npm run build
 

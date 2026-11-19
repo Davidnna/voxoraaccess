@@ -1466,3 +1466,44 @@ body{padding-bottom:0}
         padding: 1rem;
     }
 }
+
+
+/* Structured document reading controls and current reading position. */
+#voxora-app-root .react-reader-toolbar select {
+    min-height: 40px;
+    max-width: min(100%, 22rem);
+    padding: 8px 34px 8px 11px;
+    border: 1px solid var(--react-line);
+    border-radius: 8px;
+    background: #fff;
+    color: var(--react-ink);
+    font: inherit;
+}
+
+#voxora-app-root .react-reader-progress {
+    max-width: 78ch;
+    margin: .75rem 0 1.25rem;
+    padding: .75rem 1rem;
+    border-left: 3px solid var(--react-teal);
+    background: var(--react-soft);
+    color: var(--react-forest);
+    font-weight: 650;
+}
+
+#voxora-app-root .react-document-reading-content [data-reader-active="true"] {
+    border-radius: 5px;
+    outline: 2px solid color-mix(in srgb, var(--react-teal) 48%, transparent);
+    outline-offset: 3px;
+    background: color-mix(in srgb, var(--react-teal) 7%, white);
+}
+
+#voxora-app-root .react-document-reading-content tr[data-reader-active="true"] > td {
+    background: color-mix(in srgb, var(--react-teal) 9%, white);
+}
+
+@media (max-width: 640px) {
+    #voxora-app-root .react-reader-toolbar select {
+        width: 100%;
+        max-width: 100%;
+    }
+}

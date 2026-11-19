@@ -38,6 +38,8 @@ class AccessibilityContractTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.app = (ROOT / "src" / "App.jsx").read_text(encoding="utf-8")
+        cls.reader_component = (ROOT / "src" / "components" / "DocumentReader.jsx").read_text(encoding="utf-8")
+        cls.reader_data = (ROOT / "src" / "data" / "reader.js").read_text(encoding="utf-8")
         cls.voice = (
             ROOT / "src" / "components" / "VoiceAssistant.jsx"
         ).read_text(encoding="utf-8")
@@ -65,19 +67,19 @@ class AccessibilityContractTests(unittest.TestCase):
         self.assertIn('className="react-user">{user.name}</span>', self.app)
 
     def test_accessible_reader_renders_semantic_document_blocks(self):
-        self.assertIn('function DocumentBlocks({ blocks, fallbackText = "" })', self.app)
-        self.assertIn('<th scope="col"', self.app)
-        self.assertIn('<caption>{block.caption || "Document table"}</caption>', self.app)
-        self.assertIn('role="region" tabIndex={0} aria-label={`Scrollable table:', self.app)
-        self.assertIn('buildListTree', self.app)
-        self.assertIn('renderListTree', self.app)
-        self.assertIn('<th scope="col"', self.app)
-        self.assertIn('colSpan: metadata?.colspan > 1 ? metadata.colspan : undefined', self.app)
-        self.assertIn('rowSpan: metadata?.rowspan > 1 ? metadata.rowspan : undefined', self.app)
-        self.assertIn('block.type === "speaker_notes"', self.app)
-        self.assertIn('block.type === "image_placeholder"', self.app)
+        self.assertIn('function DocumentBlocks({ blocks, segmentTargets })', self.reader_component)
+        self.assertIn('<th scope="col"', self.reader_component)
+        self.assertIn('<caption>{block.caption || "Document table"}</caption>', self.reader_component)
+        self.assertIn('role="region"', self.reader_component)
+        self.assertIn('buildListTree', self.reader_component)
+        self.assertIn('renderListTree', self.reader_component)
+        self.assertIn('colSpan: metadata?.colspan > 1 ? metadata.colspan : undefined', self.reader_component)
+        self.assertIn('rowSpan: metadata?.rowspan > 1 ? metadata.rowspan : undefined', self.reader_component)
+        self.assertIn('block.type === "speaker_notes"', self.reader_component)
+        self.assertIn('block.type === "image_placeholder"', self.reader_component)
         self.assertIn('path.endsWith("/read")&&data.resource', self.app)
-        self.assertIn("Refresh reading view", self.app)
+        self.assertIn("Refresh reading view", self.reader_component)
+        self.assertIn("<thead>", self.reader_component)
 
     def test_document_extractor_preserves_explicit_heading_list_and_table_metadata(self):
         extractor = (ROOT / "document_accessibility.py").read_text(encoding="utf-8")
@@ -98,24 +100,23 @@ class AccessibilityContractTests(unittest.TestCase):
         self.assertIn("Preparing your reading view.", self.app)
 
     def test_reader_controls_are_labelled_and_use_voxora_speech(self):
-        self.assertIn('label htmlFor="reader-text-size">Text size</label>', self.app)
-        self.assertIn('aria-valuetext={`${readerTextSize} percent`}', self.app)
-        self.assertIn('new Event("voxora:read-document")', self.app)
-        self.assertIn('new Event("voxora:stop-reading")', self.app)
-        self.assertIn('window.addEventListener("voxora:read-document", readDocument)', self.voice)
+        self.assertIn('label htmlFor="reader-text-size">Text size</label>', self.reader_component)
+        self.assertIn('aria-valuetext={`${readerTextSize} percent`}', self.reader_component)
+        self.assertIn('new Event("voxora:stop-reading")', self.reader_component)
+        self.assertIn('window.addEventListener("voxora:read-segments", readSegments)', self.voice)
         self.assertIn('window.addEventListener("voxora:stop-reading", stopDocument)', self.voice)
         self.assertIn('This browser does not support Voxora voice playback', self.voice)
         self.assertIn('Microphone mute affects input only. It must never disable speaker output.', self.voice)
         self.assertNotIn('Speech output is muted', self.voice)
 
-    def test_reader_uses_full_extracted_text_without_duplicate_page_text(self):
+    def test_reader_uses_structured_segments_without_duplicate_page_text(self):
         self.assertIn('cached.resource?.reading_text || cached.resource?.text_excerpt', self.app)
         self.assertIn('result.resource?.reading_text || result.resource?.text_excerpt', self.app)
-        self.assertIn('const readerContent = main?.querySelector(".react-document-reading-content")?.innerText || ""', self.voice)
-        self.assertIn('const readerStatus = main?.querySelector(".react-extraction-status")?.innerText || ""', self.voice)
-        self.assertIn('(readerContent || main?.innerText || document.body.innerText || documentText).trim()', self.voice)
-        self.assertIn('const limited = Boolean(window.voxoraCurrentResourceTruncated)', self.voice)
-        self.assertIn('speak(prefix + pageText)', self.voice)
+        self.assertIn('buildReadingSegments(blocks)', self.reader_component)
+        self.assertIn('resource.reading_text', self.reader_component)
+        self.assertIn('voxora:read-segments', self.voice)
+        self.assertIn('voxora:reader-progress', self.voice)
+        self.assertIn('suppressResume: true', self.voice)
 
     def test_document_preview_has_named_frame_and_new_tab_alternative(self):
         self.assertIn('className="react-document-frame"', self.app)
@@ -123,7 +124,7 @@ class AccessibilityContractTests(unittest.TestCase):
         self.assertIn('aria-describedby="document-preview-help"', self.app)
         self.assertIn('target="_blank" rel="noopener noreferrer"', self.app)
         self.assertIn('Open preview in a new tab', self.app)
-        self.assertIn('Scanned text, diagrams, equations, charts and complex layouts may not be represented accurately.', self.app)
+        self.assertIn('Scanned text, diagrams, equations, charts and complex layouts may not be represented accurately.', self.reader_component)
 
     def test_form_focus_indicator_is_solid_and_visible(self):
         self.assertIn('outline: 3px solid var(--react-teal);', self.css)
@@ -368,7 +369,9 @@ class AccessibilityContractTests(unittest.TestCase):
     def test_document_reading_uses_all_extracted_text_instead_of_a_40k_prefix(self):
         self.assertNotIn("const maxReadCharacters = 40000", self.voice)
         self.assertNotIn("read-aloud currently reads up to the first 40,000", self.app)
-        self.assertIn("+ text);", self.voice)
+        self.assertIn("buildReadingSegments", self.reader_data)
+        self.assertIn("segments.length", self.reader_component)
+        self.assertIn("nextSegmentIndex: nextIndex", self.voice)
 
     def test_speech_supports_echo_gated_barge_in_with_half_duplex_fallback(self):
         speech_block = self.voice.split('const speak = (text, options = {}) => {', 1)[1].split('speakRef.current = speak;', 1)[0]

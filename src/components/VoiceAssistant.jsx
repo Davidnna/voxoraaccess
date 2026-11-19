@@ -48,6 +48,8 @@ export default function VoiceAssistant() {
     };
     const requestAbortRef = useRef(null);
     const speechQueueRef = useRef([]);
+    const readerQueueRef = useRef(null);
+    const readerRunRef = useRef(0);
     const speechWatchdogRef = useRef(null);
     const speechEndWatchdogRef = useRef(null);
     const pendingSpeechRef = useRef(null);
@@ -73,6 +75,14 @@ export default function VoiceAssistant() {
 
     useEffect(() => { activeRef.current = active; }, [active]);
     useEffect(() => { headingIndexRef.current = -1; }, [voiceLocation.pathname]);
+    useEffect(() => {
+        const readerMatch = voiceLocation.pathname.match(/^\/resource\/(\d+)\/read$/);
+        const activeResourceId = Number(readerQueueRef.current?.resourceId || 0);
+        if (readerMatch && activeResourceId === Number(readerMatch[1])) return;
+        if (readerQueueRef.current) {
+            interruptSpeechRef.current?.();
+        }
+    }, [voiceLocation.pathname]);
     useEffect(() => { mutedRef.current = muted; }, [muted]);
 
     useEffect(() => {
@@ -341,6 +351,13 @@ export default function VoiceAssistant() {
                     if (Date.now() < audioOutputGuardUntilRef.current && !recentUserVoice) continue;
                 }
 
+                // A short inter-segment gap is still part of document playback.
+                // A genuine user command in that gap must cancel the remaining
+                // reader queue just like an interruption during an utterance.
+                if (readerQueueRef.current && !speakingRef.current) {
+                    interruptSpeechRef.current?.();
+                }
+
                 if (busyRef.current) {
                     requestAbortRef.current?.abort();
                     busyRef.current = false;
@@ -406,8 +423,19 @@ export default function VoiceAssistant() {
         welcomeGestureHandlerRef.current = null;
     };
 
-    const interruptSpeech = ({ userBargeIn = false } = {}) => {
+    const interruptSpeech = ({ userBargeIn = false, suppressReaderStopped = false } = {}) => {
         const wasSpeaking = speakingRef.current || Boolean(window.speechSynthesis?.speaking);
+        const activeReader = readerQueueRef.current;
+        const wasReading = Boolean(activeReader);
+        if (activeReader) {
+            readerQueueRef.current = null;
+            readerRunRef.current += 1;
+            if (!suppressReaderStopped) {
+                window.dispatchEvent(new CustomEvent("voxora:reader-stopped", {
+                    detail: { resourceId: activeReader.resourceId },
+                }));
+            }
+        }
         speechRunRef.current += 1;
         clearSpeechWatchdog();
         window.speechSynthesis?.cancel();
@@ -428,7 +456,7 @@ export default function VoiceAssistant() {
         recentSpeechSegmentsRef.current = [];
         ignoreRecognitionResultsRef.current = false;
         setSpeaking(false);
-        if (wasSpeaking) {
+        if (wasSpeaking || wasReading) {
             audioOutputGuardUntilRef.current = Date.now() + (userBargeIn ? 180 : 500);
             if (!recognitionListeningRef.current) resumeListening(userBargeIn ? 100 : 500);
         }
@@ -602,7 +630,12 @@ export default function VoiceAssistant() {
             ignoreRecognitionResultsRef.current = false;
             setSpeaking(false);
             audioOutputGuardUntilRef.current = Date.now() + (echoAwareBargeIn ? 350 : 900);
-            resumeListening(echoAwareBargeIn ? 350 : 900);
+            if (!options.suppressResume) {
+                resumeListening(echoAwareBargeIn ? 350 : 900);
+            }
+            if (typeof options.onComplete === "function") {
+                try { options.onComplete(); } catch (_) {}
+            }
         };
 
         const fail = (reason) => {
@@ -625,7 +658,12 @@ export default function VoiceAssistant() {
             } else {
                 setNotice("Voxora couldn't play audio. Check your device volume and audio settings.");
             }
-            resumeListening(900);
+            if (typeof options.onError === "function") {
+                try { options.onError(reason); } catch (_) {}
+            }
+            if (!options.suppressResume) {
+                resumeListening(900);
+            }
         };
 
         const speakNext = () => {
@@ -720,13 +758,14 @@ export default function VoiceAssistant() {
 
         const beginSpeechQueue = () => {
             const engineResetDelay = previousSpeechActive ? (userGesture ? 80 : 120) : 0;
+            const queueDelay = options.continueQueue ? 40 : 180;
             window.setTimeout(() => {
                 if (runId !== speechRunRef.current) return;
                 if (echoAwareBargeIn && activeRef.current && !mutedRef.current && !recognitionListeningRef.current) {
                     resumeListening(0);
                 }
                 speakNext();
-            }, engineResetDelay + 180);
+            }, engineResetDelay + queueDelay);
         };
         if (recognitionListeningRef.current && !echoAwareBargeIn) {
             waitForRecognitionToStop().then(beginSpeechQueue);
@@ -741,26 +780,119 @@ export default function VoiceAssistant() {
 
     useEffect(() => {
         const readDocument = () => {
-            const text = String(window.voxoraCurrentResourceText || "").trim();
-            if (!text) {
-                setNotice("No extracted document text is available to read yet.");
-                return;
-            }
-            const limited = Boolean(window.voxoraCurrentResourceTruncated);
-            setNotice(limited
-                ? "Preparing audio for all extracted text. The source document may contain additional content not extracted by Voxora…"
-                : "Preparing the complete extracted document for audio…");
-            speakRef.current?.((limited ? "The source document was partially extracted. I will read all text currently available to Voxora. " : "") + text);
+            window.dispatchEvent(new CustomEvent("voxora:reader-command", {
+                detail: { command: "resume" },
+            }));
         };
         const stopDocument = () => {
             interruptSpeechRef.current?.();
             setNotice("Document reading stopped.");
         };
+        const readSegments = (event) => {
+            const detail = event.detail || {};
+            const segments = Array.isArray(detail.segments) ? detail.segments : [];
+            const resourceId = Number(detail.resourceId);
+            const startIndex = Math.max(0, Math.min(segments.length, Number(detail.startIndex) || 0));
+            const endIndex = Math.max(
+                startIndex,
+                Math.min(segments.length - 1, Number.isInteger(Number(detail.endIndex)) ? Number(detail.endIndex) : segments.length - 1)
+            );
+            if (!resourceId || !segments.length || startIndex >= segments.length) {
+                setNotice("There is no more readable content at this position.");
+                return;
+            }
+
+            interruptSpeechRef.current?.({ suppressReaderStopped: true });
+            const runId = ++readerRunRef.current;
+            readerQueueRef.current = {
+                runId,
+                resourceId,
+                readingFingerprint: detail.readingFingerprint || "",
+                segments,
+                endIndex,
+            };
+
+            const playSegment = (index) => {
+                const queue = readerQueueRef.current;
+                if (!queue || queue.runId !== runId || readerRunRef.current !== runId) return;
+                if (index > queue.endIndex) {
+                    const documentComplete = queue.endIndex >= queue.segments.length - 1;
+                    readerQueueRef.current = null;
+                    window.dispatchEvent(new CustomEvent("voxora:reader-complete", {
+                        detail: { resourceId, documentComplete },
+                    }));
+                    setNotice(documentComplete ? "Document reading complete." : "Reading part complete.");
+                    resumeListening(500);
+                    return;
+                }
+
+                const segment = queue.segments[index];
+                if (!segment || !String(segment.text || "").trim()) {
+                    playSegment(index + 1);
+                    return;
+                }
+                window.dispatchEvent(new CustomEvent("voxora:reader-position", {
+                    detail: { resourceId, index, segment },
+                }));
+                const started = speakRef.current?.(segment.text, {
+                    suppressResume: true,
+                    continueQueue: true,
+                    onComplete: () => {
+                        const currentQueue = readerQueueRef.current;
+                        if (!currentQueue || currentQueue.runId !== runId || readerRunRef.current !== runId) return;
+                        const nextIndex = index + 1;
+                        window.dispatchEvent(new CustomEvent("voxora:reader-progress", {
+                            detail: {
+                                resourceId,
+                                nextSegmentIndex: nextIndex,
+                                totalSegments: segments.length,
+                                completed: nextIndex >= segments.length,
+                            },
+                        }));
+                        if (nextIndex <= endIndex) {
+                            window.setTimeout(() => playSegment(nextIndex), 70);
+                        } else {
+                            const documentComplete = endIndex >= segments.length - 1;
+                            readerQueueRef.current = null;
+                            window.dispatchEvent(new CustomEvent("voxora:reader-complete", {
+                                detail: { resourceId, documentComplete },
+                            }));
+                            setNotice(documentComplete ? "Document reading complete." : "Reading part complete.");
+                            resumeListening(500);
+                        }
+                    },
+                    onError: () => {
+                        const currentQueue = readerQueueRef.current;
+                        if (!currentQueue || currentQueue.runId !== runId) return;
+                        readerQueueRef.current = null;
+                        readerRunRef.current += 1;
+                        window.dispatchEvent(new CustomEvent("voxora:reader-error", {
+                            detail: { resourceId },
+                        }));
+                        resumeListening(900);
+                    },
+                });
+                if (!started) {
+                    readerQueueRef.current = null;
+                    readerRunRef.current += 1;
+                    window.dispatchEvent(new CustomEvent("voxora:reader-error", {
+                        detail: { resourceId },
+                    }));
+                    resumeListening(900);
+                }
+            };
+
+            setNotice("Reading document.");
+            playSegment(startIndex);
+        };
+
         window.addEventListener("voxora:read-document", readDocument);
         window.addEventListener("voxora:stop-reading", stopDocument);
+        window.addEventListener("voxora:read-segments", readSegments);
         return () => {
             window.removeEventListener("voxora:read-document", readDocument);
             window.removeEventListener("voxora:stop-reading", stopDocument);
+            window.removeEventListener("voxora:read-segments", readSegments);
         };
     }, []);
 
@@ -809,6 +941,51 @@ export default function VoiceAssistant() {
         if (/^(voxora[,. ]+)?(stop listening|end voice session)$/i.test(command)) {
             endSession();
             return;
+        }
+
+        // Document reading commands are handled by the structured reader on
+        // the accessible reading route. Other pages retain their page-level
+        // reading and heading navigation behaviour.
+        const onDocumentReader = /^\/resource\/\d+\/read$/.test(window.location.pathname);
+        const readerCommand = (readerAction, sectionTitle = "") => {
+            window.dispatchEvent(new CustomEvent("voxora:reader-command", {
+                detail: { command: readerAction, sectionTitle },
+            }));
+        };
+        if (onDocumentReader) {
+            if (/^(resume reading|continue reading|read document|start reading|read it aloud|read this document|read this page)$/i.test(command)) {
+                readerCommand("resume");
+                return;
+            }
+            if (/^(start over|restart reading|read from the beginning|start from the beginning|read from beginning)$/i.test(command)) {
+                readerCommand("restart");
+                return;
+            }
+            if (/^(next section|next chapter|read next section|next heading|move to next heading)$/i.test(command)) {
+                readerCommand("next-section");
+                return;
+            }
+            if (/^(previous section|previous chapter|read previous section|previous heading|move to previous heading)$/i.test(command)) {
+                readerCommand("previous-section");
+                return;
+            }
+            if (/^(read this section|read current section)$/i.test(command)) {
+                readerCommand("current-section");
+                return;
+            }
+            if (/^(read this table|read current table)$/i.test(command)) {
+                readerCommand("current-table");
+                return;
+            }
+            if (/^(read next table|next table)$/i.test(command)) {
+                readerCommand("next-table");
+                return;
+            }
+            const sectionMatch = command.match(/^(?:go to|read|open) (?:the )?(?:section|chapter) (.+)$/i);
+            if (sectionMatch) {
+                readerCommand("go-to-section", sectionMatch[1].trim());
+                return;
+            }
         }
 
         // Voice-operated navigation stays local to the app unless the user
