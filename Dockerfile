@@ -10,20 +10,20 @@ RUN npm run build
 
 FROM python:3.12-slim
 
-ENV PYTHONDONTWRITEBYTECODE=1 \\
-    PYTHONUNBUFFERED=1 \\
-    DEBIAN_FRONTEND=noninteractive \\
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    DEBIAN_FRONTEND=noninteractive \
     VOXORA_DB_SSLMODE=require
 
-RUN apt-get update \\
-    && apt-get install -y --no-install-recommends \\
-        libreoffice-writer \\
-        libreoffice-calc \\
-        libreoffice-impress \\
-        tesseract-ocr \\
-        tesseract-ocr-eng \\
-        fonts-liberation \\
-        fonts-dejavu-core \\
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        libreoffice-writer \
+        libreoffice-calc \
+        libreoffice-impress \
+        tesseract-ocr \
+        tesseract-ocr-eng \
+        fonts-liberation \
+        fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
