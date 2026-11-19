@@ -167,19 +167,20 @@ class AccessibilityContractTests(unittest.TestCase):
         self.assertIn('setActive(false)', error_handler)
         self.assertIn('event.error === "audio-capture"', error_handler)
 
-    def test_speech_recognition_uses_half_duplex_audio_without_separate_aec_stream(self):
-        self.assertIn('const waitForRecognitionToStop = () => {', self.voice)
-        self.assertIn('recognition.abort()', self.voice)
-        self.assertIn('waitForRecognitionToStop().then(beginSpeechQueue)', self.voice)
+    def test_speech_recognition_uses_echo_aware_barge_in_during_playback(self):
+        self.assertIn('navigator.mediaDevices.getUserMedia({', self.voice)
+        self.assertIn('echoCancellation: true, noiseSuppression: true, autoGainControl: true', self.voice)
+        self.assertIn('const recentUserVoice = echoMonitorReadyRef.current && Date.now() <= userVoiceUntilRef.current', self.voice)
+        self.assertIn('if (!recentUserVoice) continue;', self.voice)
+        self.assertIn('interruptSpeechRef.current?.({ userBargeIn: true });', self.voice)
         self.assertIn('recognition.onend = () => {', self.voice)
         self.assertIn('if (recognitionRef.current !== recognition) return;', self.voice)
-        self.assertIn('audioOutputGuardUntilRef.current = Date.now() + 900', self.voice)
-        self.assertIn('Date.now() < audioOutputGuardUntilRef.current', self.voice)
-        self.assertIn('ignoreRecognitionResultsRef.current = true', self.voice)
-        self.assertIn('ignoreRecognitionResultsRef.current = false', self.voice)
-        self.assertNotIn('navigator.mediaDevices?.getUserMedia', self.voice)
-        self.assertNotIn('echoCancellation:', self.voice)
-        self.assertIn('Microphone listening is paused to prevent audio feedback.', self.voice)
+        self.assertIn('audioOutputGuardUntilRef.current = Date.now() + (echoAwareBargeIn ? 350 : 900)', self.voice)
+        self.assertIn('ignoreRecognitionResultsRef.current = !echoAwareBargeIn', self.voice)
+        self.assertIn('if (speakingRef.current && !echoMonitorReadyRef.current)', self.voice)
+        self.assertIn('waitForRecognitionToStop().then(beginSpeechQueue)', self.voice)
+        self.assertIn('Voxora is speaking. You can interrupt at any time by speaking.', self.voice)
+        self.assertIn('settings.echoCancellation === false', self.voice)
 
     def test_recognition_start_failure_resets_state(self):
         start_block = self.voice.split('const startListening = () => {', 1)[1].split('const resumeListening', 1)[0]
@@ -292,7 +293,8 @@ class AccessibilityContractTests(unittest.TestCase):
 
     def test_speech_status_tracks_browser_playback_and_reports_failures(self):
         self.assertIn('utterance.onstart = () => {', self.voice)
-        self.assertIn('setNotice("Voxora is speaking. Microphone listening is paused to prevent audio feedback.")', self.voice)
+        self.assertIn('setNotice(echoAwareBargeIn', self.voice)
+        self.assertIn('Voxora is speaking. You can interrupt at any time by speaking.', self.voice)
         self.assertIn('utterance.onerror = (event) => {', self.voice)
         self.assertIn('fail(event?.error || "speech error")', self.voice)
         self.assertIn('speechWatchdogRef.current = window.setTimeout', self.voice)
@@ -317,20 +319,24 @@ class AccessibilityContractTests(unittest.TestCase):
         self.assertNotIn("read-aloud currently reads up to the first 40,000", self.app)
         self.assertIn("+ text);", self.voice)
 
-    def test_speech_is_half_duplex_and_stops_input_before_output(self):
+    def test_speech_supports_echo_gated_barge_in_with_half_duplex_fallback(self):
         speech_block = self.voice.split('const speak = (text, options = {}) => {', 1)[1].split('speakRef.current = speak;', 1)[0]
         self.assertIn('speakingRef.current = true', speech_block)
+        self.assertIn('const echoAwareBargeIn = echoMonitorReadyRef.current', speech_block)
+        self.assertIn('if (recognitionListeningRef.current && !echoAwareBargeIn)', speech_block)
         self.assertIn('waitForRecognitionToStop().then(beginSpeechQueue)', speech_block)
-        self.assertIn('resumeListening(900)', speech_block)
-        self.assertIn('if (!activeRef.current || ignoreRecognitionResultsRef.current || speakingRef.current || Date.now() < audioOutputGuardUntilRef.current) continue;', self.voice)
+        self.assertIn('resumeListening(echoAwareBargeIn ? 350 : 900)', speech_block)
+        self.assertIn('if (!recentUserVoice) continue;', self.voice)
+        self.assertIn('interruptSpeechRef.current?.({ userBargeIn: true });', self.voice)
+        self.assertIn('const microphoneMonitorRef = useRef(', self.voice)
         self.assertNotIn('echoCancellationRef', self.voice)
-        self.assertNotIn('voiceActivityUntilRef', self.voice)
 
     def test_microphone_mute_is_independent_of_speech_output(self):
         speak_block = self.voice.split('const speak = (text, options = {}) => {', 1)[1].split('speakRef.current = speak;', 1)[0]
         mute_block = self.voice.split('const mute = () => {', 1)[1].split('const endSession', 1)[0]
         self.assertIn('synthesis.speak(utterance)', speak_block)
-        self.assertNotIn('mutedRef.current', speak_block)
+        self.assertNotIn('if (mutedRef.current) return', speak_block)
+        self.assertIn('Microphone mute affects input only. It must never disable speaker output.', speak_block)
         self.assertNotIn('interruptSpeech()', mute_block)
         self.assertIn('Voxora can still speak', mute_block)
 

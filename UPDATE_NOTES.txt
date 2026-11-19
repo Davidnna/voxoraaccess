@@ -1,3 +1,50 @@
+VOXORA ACCESS — V23 ECHO-AWARE VOICE INTERRUPTION
+
+This update corrects the V22 regression that prevented users from interrupting Voxora while it was speaking. It preserves the existing React/Flask architecture, voice controls, welcome behaviour, document reading, account flows and resource management.
+
+1. VOICE BARGE-IN
+   - SpeechRecognition remains active during speech output when an echo-aware microphone monitor is available.
+   - On the user's Enable / Resume action, Voxora requests a separate microphone stream with echo cancellation, noise suppression and automatic gain control.
+   - A local Web Audio analyser performs voice-activity detection on the processed stream. The monitor does not record, persist or upload audio.
+   - While Voxora is speaking, final speech-recognition results are ignored unless the echo-cancelled monitor has detected recent near-end user speech.
+   - A corroborated user transcript immediately cancels the current utterance and remaining speech queue, then processes the transcript as a new command.
+   - Direct interruption phrases include Stop, Stop speaking, Be quiet, Wait, Hold on, Pause and Interrupt, with an optional Voxora prefix.
+
+2. SELF-ECHO PROTECTION AND FALLBACK
+   - Voxora no longer relies on a separate echoCancellation stream to clean the SpeechRecognition input itself. Instead, the processed stream acts as an independent near-end voice-activity gate for recognition results.
+   - Buffered recognition results without recent user voice activity are discarded during playback and the short post-playback guard.
+   - If echo cancellation is unavailable, the browser cannot start the monitor, or microphone permission is unavailable, Voxora safely falls back to V22 half-duplex behaviour. In that fallback, spoken interruption is unavailable during playback; the Stop speaking control remains available.
+   - Microphone mute and Pause access stop the monitor and release its media tracks. The monitor is restarted only when voice access is enabled again.
+   - Stale monitor startup results are discarded after mute, session end or component teardown.
+
+3. TESTS AND DOCUMENTATION
+   - Replaced the V22 test that expected recognition to remain off during speech.
+   - Added browser tests proving that uncorroborated echo-like transcripts are ignored, near-end user speech interrupts playback, and a spoken Stop command cancels speech.
+   - Added source-contract tests for echo cancellation constraints, VAD gating, interruption handling and safe fallback.
+   - Updated the README to document browser support requirements, local-only monitor processing and the fallback behaviour.
+
+VALIDATION
+   - Python unit and source-regression tests: 97 passed.
+   - Python compilation for app.py and document_accessibility.py: passed.
+   - Browser test JavaScript syntax checks: passed.
+   - React JSX syntax/transpilation check using the installed TypeScript parser: passed.
+   - Vite production build and Playwright/axe browser suite: not run because root and browser-test Node dependencies are not installed in this environment.
+   - Real-device microphone/speaker verification is required after deployment. Browser mocks validate event flow but cannot establish acoustic performance on every device, speaker volume or room.
+   - No GitHub push or production deployment is performed by this source-package preparation.
+
+GIT COMMIT
+   Message: feat(voice): support safe voice interruption during playback
+   Description:
+   - Add echo-cancelled microphone monitoring and local voice-activity detection.
+   - Keep recognition active during playback when echo-aware monitoring is available.
+   - Gate playback-time transcripts on recent near-end user speech.
+   - Interrupt speech synthesis and process corroborated user commands immediately.
+   - Preserve half-duplex fallback where echo cancellation is unavailable.
+   - Release microphone monitor resources on mute, session end and teardown.
+   - Update browser regression tests and voice documentation.
+
+--- PREVIOUS RELEASE NOTES: V22 ---
+
 VOXORA ACCESS — V22 HALF-DUPLEX VOICE SEPARATION
 
 This update corrects a voice-input/output feedback defect reported after V21 deployment. Voxora could recognise its own synthesized speech as if it were the user's voice. The earlier implementation used a separate getUserMedia stream to inspect echo-cancelled audio while the browser SpeechRecognition API continued listening through its own capture path. Echo cancellation on that separate stream did not guarantee echo cancellation in the recognition engine.
