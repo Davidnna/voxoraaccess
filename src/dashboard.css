@@ -1430,6 +1430,23 @@ body{padding-bottom:0}
     font-weight: 750;
 }
 
+#voxora-app-root .react-speaker-notes {
+    margin: 1.5rem 0;
+    padding: 1rem 1.2rem;
+    border-left: 4px solid var(--react-teal);
+    border-radius: 0 10px 10px 0;
+    background: #eef6f2;
+}
+
+#voxora-app-root .react-speaker-notes h4 {
+    margin: 0 0 .45rem;
+    font-size: 1rem;
+}
+
+#voxora-app-root .react-speaker-notes p {
+    margin: 0;
+}
+
 #voxora-app-root .react-extraction-message {
     padding: .8rem 1rem;
     border-left: 4px solid var(--react-teal);

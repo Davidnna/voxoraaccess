@@ -175,13 +175,14 @@ async function preparePage(page, routePath = "/", signedOut = false, options = {
                 reading_blocks: path.endsWith("/read") ? [
                     { type: "heading", level: 2, text: "Introduction" },
                     { type: "paragraph", text: "A sample passage for assistive reading." },
-                    { type: "list_item", ordered: false, text: "First point" },
-                    { type: "list_item", ordered: false, text: "Second point" },
-                    { type: "table", caption: "Key terms", header_rows: 1, rows: [["Term", "Meaning"], ["Access", "Ability to use information"]] },
+                    { type: "list_item", ordered: false, level: 0, text: "First point" },
+                    { type: "list_item", ordered: false, level: 1, text: "Nested point" },
+                    { type: "list_item", ordered: false, level: 0, text: "Second point" },
+                    { type: "table", caption: "Key terms", header_rows: 1, rows: [["Term", "Meaning"], ["Access", "Ability to use information"]], cell_spans: [[{ colspan: 2 }, { covered_by: [0, 0] }], [null, null]] },
+                    { type: "speaker_notes", text: "A supporting note for the reader." },
                 ] : [],
                 extraction_status: options.extractionStatus || "partial",
-                extraction_method: "pypdf+ocr",
-                extraction_warnings: ["The source PDF tag order has not been independently verified."],
+                extraction_warnings: ["This PDF does not contain reliable accessibility structure. Headings, reading order, tables and image descriptions may need checking in the original."],
                 extraction_truncated: false,
                 preview_available: true,
                 page_count: 1,
@@ -473,9 +474,21 @@ test.describe("Voxora browser accessibility", () => {
 
     test("accessible reading view explains extraction limitations and links to the original", async ({ page }) => {
         await preparePage(page, "/resource/41/read");
-        await expect(page.getByRole("heading", { name: "Text extracted with limitations" })).toBeVisible();
-        await expect(page.getByText("The source PDF tag order has not been independently verified.")).toBeVisible();
+        await expect(page.getByRole("heading", { name: "Reading view has limitations" })).toBeVisible();
+        await expect(page.getByText("This PDF does not contain reliable accessibility structure. Headings, reading order, tables and image descriptions may need checking in the original.")).toBeVisible();
         await expect(page.getByRole("link", { name: "Download original" })).toBeVisible();
+    });
+
+    test("accessible reading view nests lists and renders merged table cells", async ({ page }) => {
+        await preparePage(page, "/resource/41/read");
+        const content = page.locator(".react-document-reading-content");
+        const firstItem = content.locator("ul > li").first();
+        await expect(firstItem).toContainText("First point");
+        await expect(firstItem.locator("ul > li")).toHaveText("Nested point");
+        await expect(content.locator(":scope > ul > li")).toHaveCount(2);
+        await expect(content.locator("table caption")).toHaveText("Key terms");
+        await expect(content.locator("table th[colspan='2']")).toHaveText("Term");
+        await expect(content.getByRole("region", { name: "Speaker notes" })).toContainText("A supporting note for the reader.");
     });
 
     test("reader buttons send document text to Voxora speech and can stop it", async ({ page }) => {
@@ -501,12 +514,12 @@ test.describe("Voxora browser accessibility", () => {
         expect(dimensions.document, JSON.stringify(dimensions)).toBeLessThanOrEqual(dimensions.viewport + 1);
     });
 
-    test("resource owner can refresh accessible text for an already processed document", async ({ page }) => {
+    test("resource owner can refresh the reading view for an already processed document", async ({ page }) => {
         await preparePage(page, "/resource/41", false, { extractionStatus: "ready" });
-        await expect(page.getByRole("button", { name: "Refresh accessible text" })).toBeVisible();
+        await expect(page.getByRole("button", { name: "Refresh reading view" })).toBeVisible();
     });
 
-    test("resource owner can retry accessible text extraction", async ({ page }) => {
+    test("resource owner can prepare a reading view", async ({ page }) => {
         await preparePage(page, "/resource/41");
         await page.route("**/api/resource/41/extract", async (route) => {
             await route.fulfill({
@@ -514,13 +527,13 @@ test.describe("Voxora browser accessibility", () => {
                 contentType: "application/json",
                 body: JSON.stringify({
                     status: "ready",
-                    message: "Accessible reading text is ready. Review any document notes before relying on it.",
+                    message: "Your reading view is ready. Review any document notes before relying on it.",
                     warnings: [],
                 }),
             });
         });
-        await page.getByRole("button", { name: "Prepare / retry accessible text" }).click();
-        await expect(page.getByRole("status").filter({ hasText: "Accessible reading text is ready" })).toBeVisible();
+        await page.getByRole("button", { name: "Prepare / retry reading view" }).click();
+        await expect(page.getByRole("status").filter({ hasText: "Your reading view is ready" })).toBeVisible();
     });
 
     test("forms expose accessible labels", async ({ page }) => {

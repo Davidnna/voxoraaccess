@@ -69,9 +69,33 @@ class AccessibilityContractTests(unittest.TestCase):
         self.assertIn('<th scope="col"', self.app)
         self.assertIn('<caption>{block.caption || "Document table"}</caption>', self.app)
         self.assertIn('role="region" tabIndex={0} aria-label={`Scrollable table:', self.app)
-        self.assertIn('<ul>', self.app)
+        self.assertIn('buildListTree', self.app)
+        self.assertIn('renderListTree', self.app)
+        self.assertIn('<th scope="col"', self.app)
+        self.assertIn('colSpan: metadata?.colspan > 1 ? metadata.colspan : undefined', self.app)
+        self.assertIn('rowSpan: metadata?.rowspan > 1 ? metadata.rowspan : undefined', self.app)
+        self.assertIn('block.type === "speaker_notes"', self.app)
+        self.assertIn('block.type === "image_placeholder"', self.app)
         self.assertIn('path.endsWith("/read")&&data.resource', self.app)
-        self.assertIn("Refresh accessible text", self.app)
+        self.assertIn("Refresh reading view", self.app)
+
+    def test_document_extractor_preserves_explicit_heading_list_and_table_metadata(self):
+        extractor = (ROOT / "document_accessibility.py").read_text(encoding="utf-8")
+        self.assertIn("def _docx_heading_level", extractor)
+        self.assertIn("def _docx_list_info", extractor)
+        self.assertIn("def _docx_table_grid", extractor)
+        self.assertIn("def _pptx_table_grid", extractor)
+        self.assertIn('extraction_mode="layout"', extractor)
+        self.assertIn('"cell_spans"', extractor)
+        self.assertIn('"speaker_notes"', extractor)
+        self.assertIn('"image_placeholder"', extractor)
+
+    def test_student_interface_does_not_expose_internal_extraction_methods(self):
+        backend = (ROOT / "app.py").read_text(encoding="utf-8")
+        self.assertNotIn('"extraction_method": r["extraction_method"]', backend)
+        self.assertNotIn('"method": extraction["method"]', backend)
+        self.assertNotIn("Extraction method:", self.app)
+        self.assertIn("Preparing your reading view.", self.app)
 
     def test_reader_controls_are_labelled_and_use_voxora_speech(self):
         self.assertIn('label htmlFor="reader-text-size">Text size</label>', self.app)
@@ -99,7 +123,7 @@ class AccessibilityContractTests(unittest.TestCase):
         self.assertIn('aria-describedby="document-preview-help"', self.app)
         self.assertIn('target="_blank" rel="noopener noreferrer"', self.app)
         self.assertIn('Open preview in a new tab', self.app)
-        self.assertIn('OCR and text extraction can misread words', self.app)
+        self.assertIn('Scanned text, diagrams, equations, charts and complex layouts may not be represented accurately.', self.app)
 
     def test_form_focus_indicator_is_solid_and_visible(self):
         self.assertIn('outline: 3px solid var(--react-teal);', self.css)

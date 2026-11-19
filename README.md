@@ -22,9 +22,13 @@ Voxora Access is a voice-first digital accessibility and learning-resource platf
 - Provides embedded previews for PDF, DOCX/PPTX-converted PDF, TXT, MD and CSV resources when the required preview data is available.
 - Includes resource discovery, a personal library, private sharing between existing accounts, and public/private visibility settings.
 - Extracts structured reading content from PDF, DOCX, PPTX, TXT, Markdown and CSV uploads. Scanned PDF pages can use local Tesseract OCR when the server's OCR engine and language data are installed.
-- Provides a text-first document reading view with semantic headings, lists and tables, adjustable text size, and read-aloud support for all extracted text (up to the configured extraction limit), split into short speech segments. Resource owners can refresh the extracted reading structure for existing uploads after processing improvements.
-- Preserves table header semantics only when the source format provides explicit evidence. DOCX repeat-header metadata is retained; CSV and PowerPoint tables are not assigned an assumed first-row header.
-- Warns when text boxes, charts, diagrams, merged table cells, slide reading order, speaker notes or other embedded content may be missing from the extracted reading view.
+- Provides a text-first document reading view with semantic headings, nested lists and tables, adjustable text size, and read-aloud support for all extracted content (up to the configured extraction limit), split into short speech segments. Resource owners can refresh the reading view for existing uploads after processing improvements.
+- Recognises Word heading styles, inherited custom heading styles and explicit outline levels. Word list numbering and nesting levels are retained where the source identifies them.
+- Preserves explicit Word table header rows, including multiple leading header rows, and carries detected horizontal and vertical merged-cell spans into the reading view. CSV and PowerPoint tables are not assigned an assumed first-row header.
+- Keeps inline Word image descriptions in their position within the surrounding text. Word footnotes and endnotes are included in separate sections after the main document text; their original inline reference positions are not recreated.
+- Preserves PowerPoint bullet levels, merged table spans and available speaker notes. Speaker notes appear after the slide content and should be reviewed for presenter-only information before sharing.
+- Uses layout-aware PDF text extraction when supported by the installed pypdf version. This improves text positioning in many files but does not validate PDF tags or guarantee the reading order of complex multi-column layouts.
+- Provides user-facing document notes when headings, image descriptions, charts, diagrams, floating text boxes or other visual content may be missing or require checking against the original file.
 
 ### Accounts and resource permissions
 

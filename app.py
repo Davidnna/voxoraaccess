@@ -816,20 +816,17 @@ def api_extract_resource(rid):
     )
     db().commit()
     if extraction["status"] == "ready":
-        message = "Accessible reading text is ready. Review any document notes before relying on it."
+        message = "Your reading view is ready. Review any document notes before relying on it."
     elif extraction["status"] == "partial":
-        message = "Text was extracted with limitations. Review the document notes and original file."
+        message = "Your reading view is ready with some limitations. Review the document notes and original file."
     elif extraction["status"] == "needs_ocr":
-        message = "No selectable text was found. OCR could not prepare readable text on this server."
+        message = "This document appears to contain scanned pages that could not be read. Try a searchable PDF or a clearer scan."
     else:
-        message = "No readable text could be extracted. The original upload is retained for download."
+        message = "A reading view could not be prepared. The original document is still available for download."
     response = jsonify({
         "status": extraction["status"],
-        "method": extraction["method"],
         "warnings": extraction["warnings"],
         "page_count": extraction["page_count"],
-        "text_length": len(extraction["text"]),
-        "truncated": extraction["truncated"],
         "message": message,
     })
     response.headers["Cache-Control"] = "private, no-store"
@@ -1077,7 +1074,7 @@ def site_data():
                     CASE WHEN %s THEN r.extracted_text ELSE LEFT(r.extracted_text, 16001) END AS extracted_text,
                     length(r.extracted_text) > 16000 AS text_truncated,
                     CASE WHEN %s THEN r.extracted_blocks ELSE '[]'::jsonb END AS extracted_blocks,
-                    r.extraction_status, r.extraction_method,
+                    r.extraction_status,
                     r.extraction_warnings, r.extraction_truncated, r.page_count,
                     CASE WHEN r.extension IN ('docx', 'pptx', 'rtf', 'odt', 'ods', 'odp')
                         THEN r.preview_data IS NOT NULL ELSE TRUE END AS preview_available,
@@ -1111,7 +1108,6 @@ def site_data():
                 "text_excerpt": extracted_text[:16000],
                 "text_truncated": bool(r["text_truncated"]),
                 "extraction_status": r["extraction_status"] or "pending",
-                "extraction_method": r["extraction_method"] or "",
                 "extraction_warnings": [
                     line for line in (r["extraction_warnings"] or "").splitlines() if line.strip()
                 ],
