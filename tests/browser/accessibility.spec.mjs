@@ -47,17 +47,37 @@ async function expandVoiceDock(page) {
 async function preparePage(page, routePath = "/", signedOut = false, options = {}) {
     await page.addInitScript(({ speechBehavior, welcome }) => {
         window.voxoraWelcomeEnabled = Boolean(welcome);
+        window.__voxoraRecognitionInstances = [];
         class TestSpeechRecognition {
-            start() { this.started = true; }
+            constructor() {
+                this.started = false;
+                window.__voxoraRecognitionInstances.push(this);
+            }
+            start() {
+                if (this.started) throw new DOMException("Recognition already started", "InvalidStateError");
+                this.started = true;
+                this.onstart?.();
+            }
             stop() {
                 this.started = false;
-                if (typeof this.onend === "function") this.onend();
+                this.onend?.();
+            }
+            abort() {
+                this.started = false;
+                this.onend?.();
+            }
+            emit(transcript) {
+                const result = [{ transcript }];
+                result.isFinal = true;
+                this.onresult?.({ resultIndex: 0, results: [result] });
             }
         }
         window.SpeechRecognition = TestSpeechRecognition;
         window.webkitSpeechRecognition = TestSpeechRecognition;
         window.__voxoraSpeechOutput = [];
         window.__voxoraSpeechCallCount = 0;
+        window.__voxoraSpeechRecognitionWasActiveAtSpeech = [];
+        window.__voxoraReleaseSpeech = null;
         window.__voxoraSpeechBehavior = speechBehavior || "success";
         window.SpeechSynthesisUtterance = class {
             constructor(text) { this.text = text; }
@@ -69,6 +89,9 @@ async function preparePage(page, routePath = "/", signedOut = false, options = {
             speak(utterance) {
                 window.__voxoraSpeechOutput.push(utterance.text);
                 window.__voxoraSpeechCallCount += 1;
+                window.__voxoraSpeechRecognitionWasActiveAtSpeech.push(
+                    window.__voxoraRecognitionInstances.some((recognition) => recognition.started)
+                );
                 const callNumber = window.__voxoraSpeechCallCount;
                 const behavior = window.__voxoraSpeechBehavior;
                 window.setTimeout(() => {
@@ -77,20 +100,14 @@ async function preparePage(page, routePath = "/", signedOut = false, options = {
                         return;
                     }
                     utterance.onstart?.();
+                    if (behavior === "hold") {
+                        window.__voxoraReleaseSpeech = () => utterance.onend?.();
+                        return;
+                    }
                     window.setTimeout(() => utterance.onend?.(), 40);
                 }, 0);
             },
         };
-        try {
-            Object.defineProperty(navigator, "mediaDevices", {
-                configurable: true,
-                value: {
-                    getUserMedia: async () => {
-                        throw new DOMException("Microphone permission denied in test", "NotAllowedError");
-                    },
-                },
-            });
-        } catch (_) {}
     }, { speechBehavior: options.speechBehavior || "success", welcome: Boolean(options.welcome) });
 
     await page.route("**/api/site?*", async (route) => {
@@ -243,6 +260,35 @@ test.describe("Voxora browser accessibility", () => {
         await unmute.click();
         await expect(controls.getByRole("button", { name: "Mute microphone" })).toHaveAttribute("aria-pressed", "true");
         await expect(controls.getByRole("button", { name: "Pause access" })).toBeVisible();
+    });
+
+    test("microphone recognition stays off during Voxora speech and resumes after the quiet interval", async ({ page }) => {
+        await preparePage(page, "/resource/41/read", false, { speechBehavior: "hold" });
+        const controls = await expandVoiceDock(page);
+        await controls.getByRole("button", { name: "Enable microphone" }).click();
+        await expect.poll(() => page.evaluate(() => window.__voxoraRecognitionInstances.at(-1)?.started)).toBe(true);
+
+        await page.getByRole("button", { name: "Read aloud with Voxora" }).click();
+        await page.waitForFunction(() => window.__voxoraSpeechCallCount === 1 && window.__voxoraReleaseSpeech);
+        const recognitionAtPlayback = await page.evaluate(() => ({
+            activeAtSpeechStart: window.__voxoraSpeechRecognitionWasActiveAtSpeech[0],
+            currentlyListening: window.__voxoraRecognitionInstances.at(-1)?.started,
+        }));
+        expect(recognitionAtPlayback).toEqual({ activeAtSpeechStart: false, currentlyListening: false });
+
+        await page.evaluate(() => window.__voxoraRecognitionInstances.at(-1)?.emit("go to dashboard"));
+        await expect(page).toHaveURL(/\/resource\/41\/read$/);
+        await expect(controls.getByRole("status").first()).toContainText("Speaking · microphone paused");
+
+        await page.evaluate(() => {
+            const previousRecognition = window.__voxoraRecognitionInstances.at(-1);
+            window.__voxoraReleaseSpeech?.();
+            // A late result from the aborted recognizer must remain stale even
+            // after speech has ended and before a fresh session is created.
+            previousRecognition?.emit("go to dashboard");
+        });
+        await expect(page).toHaveURL(/\/resource\/41\/read$/);
+        await expect.poll(() => page.evaluate(() => window.__voxoraRecognitionInstances.at(-1)?.started), { timeout: 5000 }).toBe(true);
     });
 
     test("welcome retries after the browser blocks automatic speech until a user gesture", async ({ page }) => {

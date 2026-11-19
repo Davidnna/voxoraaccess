@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { accountNav, legal, nav, normalizeVoiceText } from "../data/navigation.js";
 
-const WELCOME_TEXT = "Hello, welcome to Voxora Access. I am Voxora, your voice-powered website assistant. I can help you explore the website, find and manage learning resources, understand pages, and complete actions here. You can interrupt me whenever you need. After this welcome, I will stay quiet until you speak to me.";
+const WELCOME_TEXT = "Hello, welcome to Voxora Access. I am Voxora, your voice-powered website assistant. I can help you explore the website, find and manage learning resources, understand pages, and complete actions here. I pause microphone listening while I speak so my voice is not mistaken for yours. You can use Stop speaking whenever you want me to stop. After this welcome, I will stay quiet until you speak to me.";
 
 export default function VoiceAssistant() {
     const navigate = useNavigate();
@@ -42,7 +42,6 @@ export default function VoiceAssistant() {
             window.sessionStorage.setItem("voxora-conversation-v1", JSON.stringify(messagesRef.current));
         } catch (_) {}
     };
-    const speakingTextRef = useRef("");
     const requestAbortRef = useRef(null);
     const speechQueueRef = useRef([]);
     const speechWatchdogRef = useRef(null);
@@ -54,15 +53,12 @@ export default function VoiceAssistant() {
     const speechRunRef = useRef(0);
     const speakRef = useRef(null);
     const interruptSpeechRef = useRef(null);
-    const micStreamRef = useRef(null);
-    const audioContextRef = useRef(null);
-    const analyserRef = useRef(null);
-    const vadFrameRef = useRef(null);
-    const vadMonitorRef = useRef(null);
-    const echoCancellationRef = useRef(false);
-    const voiceStartRef = useRef(0);
-    const voiceActivityUntilRef = useRef(0);
-    const noiseFloorRef = useRef(0.005);
+    const recognitionListeningRef = useRef(false);
+    const ignoreRecognitionResultsRef = useRef(false);
+    const recognitionStopWaiterRef = useRef(null);
+    const recognitionStopTimerRef = useRef(null);
+    const resumeListeningTimerRef = useRef(null);
+    const audioOutputGuardUntilRef = useRef(0);
 
     useEffect(() => { activeRef.current = active; }, [active]);
     useEffect(() => { headingIndexRef.current = -1; }, [voiceLocation.pathname]);
@@ -95,100 +91,128 @@ export default function VoiceAssistant() {
         return () => window.removeEventListener("voxora:session-ended", clearPrivateSessionContext);
     }, []);
 
-    const releaseAudioMonitor = () => {
-        if (vadFrameRef.current !== null) {
-            window.cancelAnimationFrame(vadFrameRef.current);
-            vadFrameRef.current = null;
+    // The Web Speech API owns its microphone capture internally. A separate
+    // getUserMedia stream with echoCancellation does not guarantee that the
+    // browser's SpeechRecognition stream receives the same echo processing.
+    // Use strict half-duplex audio instead: stop recognition before TTS and
+    // restart it only after speech playback and a short acoustic settling gap.
+    const finishRecognitionStopWait = (expectedRecognition = null) => {
+        const waiter = recognitionStopWaiterRef.current;
+        if (!waiter || (expectedRecognition && waiter.recognition !== expectedRecognition)) return;
+        recognitionStopWaiterRef.current = null;
+        if (recognitionStopTimerRef.current !== null) {
+            window.clearTimeout(recognitionStopTimerRef.current);
+            recognitionStopTimerRef.current = null;
         }
-        if (micStreamRef.current) {
-            micStreamRef.current.getTracks().forEach((track) => track.stop());
-            micStreamRef.current = null;
-        }
-        if (audioContextRef.current) {
-            const context = audioContextRef.current;
-            audioContextRef.current = null;
-            try { context.close(); } catch (_) {}
-        }
-        analyserRef.current = null;
-        vadMonitorRef.current = null;
-        echoCancellationRef.current = false;
-        voiceStartRef.current = 0;
-        voiceActivityUntilRef.current = 0;
+        waiter.resolve();
     };
 
-    const enableEchoCancellation = async () => {
-        if (micStreamRef.current && micStreamRef.current.getAudioTracks().some((track) => track.readyState === "live")) {
-            return echoCancellationRef.current;
-        }
-        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-        if (!navigator.mediaDevices?.getUserMedia || !AudioContextClass) return false;
-
-        const stream = await navigator.mediaDevices.getUserMedia({
-            audio: {
-                echoCancellation: { ideal: true },
-                noiseSuppression: { ideal: true },
-                autoGainControl: { ideal: true }
-            }
-        });
-        const track = stream.getAudioTracks()[0];
-        const settings = track?.getSettings?.() || {};
-        if (settings.echoCancellation !== true) {
-            stream.getTracks().forEach((item) => item.stop());
-            return false;
-        }
-
-        let context;
+    const stopRecognition = (abort = false) => {
+        const recognition = recognitionRef.current;
+        if (!recognition || !recognitionListeningRef.current) return;
         try {
-            context = new AudioContextClass();
-            if (context.state === "suspended") await context.resume();
-            const source = context.createMediaStreamSource(stream);
-            const analyser = context.createAnalyser();
-            analyser.fftSize = 1024;
-            analyser.smoothingTimeConstant = 0.15;
-            source.connect(analyser);
-
-            micStreamRef.current = stream;
-            audioContextRef.current = context;
-            analyserRef.current = analyser;
-            echoCancellationRef.current = true;
-
-            const samples = new Float32Array(analyser.fftSize);
-            const monitorVoiceActivity = () => {
-                if (!activeRef.current || mutedRef.current || !analyserRef.current) {
-                    vadFrameRef.current = null;
-                    return;
-                }
-                analyserRef.current.getFloatTimeDomainData(samples);
-                let energy = 0;
-                for (let index = 0; index < samples.length; index += 1) {
-                    energy += samples[index] * samples[index];
-                }
-                const rms = Math.sqrt(energy / samples.length);
-                const now = performance.now();
-
-                if (rms < 0.014) {
-                    noiseFloorRef.current = (noiseFloorRef.current * 0.96) + (rms * 0.04);
-                }
-                const threshold = Math.max(0.018, noiseFloorRef.current * 3.0);
-                if (rms > threshold) {
-                    if (!voiceStartRef.current) voiceStartRef.current = now;
-                    if (now - voiceStartRef.current >= 180) {
-                        voiceActivityUntilRef.current = Date.now() + 1500;
-                    }
-                } else if (!voiceStartRef.current || now - voiceStartRef.current > 180) {
-                    voiceStartRef.current = 0;
-                }
-                vadFrameRef.current = window.requestAnimationFrame(monitorVoiceActivity);
-            };
-            vadMonitorRef.current = monitorVoiceActivity;
-            return true;
-        } catch (error) {
-            stream.getTracks().forEach((item) => item.stop());
-            if (context) {
-                try { await context.close(); } catch (_) {}
-            }
-            return false;
+            if (abort && typeof recognition.abort === "function") recognition.abort();
+            else recognition.stop();
+        } catch (_) {
+            recognitionListeningRef.current = false;
+            if (recognitionRef.current === recognition) recognitionRef.current = null;
         }
+    };
+
+    const waitForRecognitionToStop = () => {
+        const recognition = recognitionRef.current;
+        const existingWaiter = recognitionStopWaiterRef.current;
+        if (existingWaiter && existingWaiter.recognition === recognition) return existingWaiter.promise;
+        if (!recognition || !recognitionListeningRef.current) return Promise.resolve();
+
+        let resolveWait;
+        const promise = new Promise((resolve) => { resolveWait = resolve; });
+        recognitionStopWaiterRef.current = { recognition, resolve: resolveWait, promise };
+        recognitionStopTimerRef.current = window.setTimeout(() => {
+            // Defensive fallback for browsers that fail to dispatch onend.
+            try { recognition.abort?.(); } catch (_) {}
+            recognitionListeningRef.current = false;
+            if (recognitionRef.current === recognition) recognitionRef.current = null;
+            finishRecognitionStopWait(recognition);
+            if (!speakingRef.current) resumeListening(650);
+        }, 1500);
+
+        try {
+            if (typeof recognition.abort === "function") recognition.abort();
+            else recognition.stop();
+        } catch (_) {
+            recognitionListeningRef.current = false;
+            if (recognitionRef.current === recognition) recognitionRef.current = null;
+            finishRecognitionStopWait(recognition);
+        }
+        return promise;
+    };
+
+    const createRecognition = () => {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+            setNotice("This browser does not support voice recognition. Try Chrome or Edge, or use your device's screen reader.");
+            return null;
+        }
+
+        const recognition = new SpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = "en-NG";
+        recognition.onstart = () => {
+            if (recognitionRef.current === recognition) recognitionListeningRef.current = true;
+        };
+        recognition.onresult = (event) => {
+            // Results from an aborted/ended recognition instance are permanently
+            // stale. Never accept them after a new recognition session is created.
+            if (recognitionRef.current !== recognition) return;
+            for (let i = event.resultIndex; i < event.results.length; i += 1) {
+                if (!activeRef.current || ignoreRecognitionResultsRef.current || speakingRef.current || Date.now() < audioOutputGuardUntilRef.current) continue;
+                const transcript = event.results[i][0].transcript.trim();
+                if (!transcript || mutedRef.current || !event.results[i].isFinal) continue;
+
+                if (busyRef.current) {
+                    requestAbortRef.current?.abort();
+                    busyRef.current = false;
+                    setBusy(false);
+                }
+                handleVoiceInput(transcript);
+            }
+        };
+        recognition.onerror = (event) => {
+            if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+                activeRef.current = false;
+                recognitionListeningRef.current = false;
+                if (recognitionRef.current === recognition) recognitionRef.current = null;
+                finishRecognitionStopWait(recognition);
+                setActive(false);
+                try { recognition.stop(); } catch (_) {}
+                setNotice("Microphone permission is needed. Select Enable voice and allow microphone access in your browser.");
+            } else if (event.error === "audio-capture") {
+                activeRef.current = false;
+                recognitionListeningRef.current = false;
+                if (recognitionRef.current === recognition) recognitionRef.current = null;
+                finishRecognitionStopWait(recognition);
+                setActive(false);
+                try { recognition.stop(); } catch (_) {}
+                setNotice("The microphone is unavailable. Check that it is connected and not being used exclusively by another application.");
+            } else if (event.error !== "no-speech" && event.error !== "aborted") {
+                setNotice("Voice recognition paused. Select Resume listening to try again.");
+            }
+        };
+        recognition.onend = () => {
+            const isCurrentRecognition = recognitionRef.current === recognition;
+            if (isCurrentRecognition) {
+                recognitionListeningRef.current = false;
+                recognitionRef.current = null;
+            }
+            finishRecognitionStopWait(recognition);
+            if (isCurrentRecognition && activeRef.current && !mutedRef.current && !speakingRef.current && !busyRef.current) {
+                resumeListening(350);
+            }
+        };
+        recognitionRef.current = recognition;
+        return recognition;
     };
 
     const clearSpeechWatchdog = () => {
@@ -212,6 +236,7 @@ export default function VoiceAssistant() {
 
     const interruptSpeech = () => {
         const interruptedWelcome = welcomePendingRef.current;
+        const wasSpeaking = speakingRef.current || Boolean(window.speechSynthesis?.speaking);
         speechRunRef.current += 1;
         clearSpeechWatchdog();
         window.speechSynthesis?.cancel();
@@ -222,138 +247,75 @@ export default function VoiceAssistant() {
         welcomePendingRef.current = interruptedWelcome;
         if (!interruptedWelcome) removeWelcomeGestureListener();
         speakingRef.current = false;
-        speakingTextRef.current = "";
         setSpeaking(false);
+        if (wasSpeaking) {
+            audioOutputGuardUntilRef.current = Date.now() + 650;
+            resumeListening(650);
+        }
     };
 
-    const startListening = async () => {
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        if (!SpeechRecognition) {
-            setNotice("This browser does not support voice recognition. Try Chrome or Edge, or use your device's screen reader.");
-            return;
-        }
-
-        let echoReady = echoCancellationRef.current;
-        try {
-            echoReady = await enableEchoCancellation();
-        } catch (_) {
-            echoReady = false;
-        }
-
-        if (!recognitionRef.current) {
-            const recognition = new SpeechRecognition();
-            recognition.continuous = true;
-            recognition.interimResults = true;
-            recognition.lang = "en-NG";
-            recognition.onresult = (event) => {
-                for (let i = event.resultIndex; i < event.results.length; i += 1) {
-                    const transcript = event.results[i][0].transcript.trim();
-                    if (!transcript || mutedRef.current) continue;
-
-                    if (speakingRef.current) {
-                        // Only accept a spoken interruption when the independently
-                        // captured, echo-cancelled microphone signal contains near-end
-                        // voice activity. Without AEC, recognition is paused during TTS.
-                        if (!echoCancellationRef.current || Date.now() > voiceActivityUntilRef.current) {
-                            continue;
-                        }
-                        const heardWords = normalizeVoiceText(transcript).split(" ").filter(Boolean);
-                        const spokenWords = normalizeVoiceText(speakingTextRef.current).split(" ").filter(Boolean);
-                        const spokenSet = new Set(spokenWords);
-                        const overlap = heardWords.length
-                            ? heardWords.filter((word) => spokenSet.has(word)).length / heardWords.length
-                            : 0;
-                        const likelyEcho = heardWords.length >= 2 && (
-                            heardWords.every((word) => spokenSet.has(word)) ||
-                            (heardWords.length >= 3 && overlap >= 0.82)
-                        );
-                        if (likelyEcho) continue;
-
-                        if (!event.results[i].isFinal) {
-                            interruptSpeech();
-                            setNotice("I heard you. Go ahead.");
-                            continue;
-                        }
-                        interruptSpeech();
-                        if (busyRef.current) {
-                            requestAbortRef.current?.abort();
-                            busyRef.current = false;
-                            setBusy(false);
-                        }
-                        voiceActivityUntilRef.current = 0;
-                        handleVoiceInput(transcript);
-                    } else if (event.results[i].isFinal) {
-                        if (busyRef.current) {
-                            requestAbortRef.current?.abort();
-                            busyRef.current = false;
-                            setBusy(false);
-                        }
-                        handleVoiceInput(transcript);
-                    }
-                }
-            };
-            recognition.onerror = (event) => {
-                if (event.error === "not-allowed" || event.error === "service-not-allowed") {
-                    activeRef.current = false;
-                    setActive(false);
-                    recognitionRef.current?.stop();
-                    releaseAudioMonitor();
-                    setNotice("Microphone permission is needed. Select Enable voice and allow microphone access in your browser.");
-                } else if (event.error === "audio-capture") {
-                    activeRef.current = false;
-                    setActive(false);
-                    recognitionRef.current?.stop();
-                    releaseAudioMonitor();
-                    setNotice("The microphone is unavailable. Check that it is connected and not being used exclusively by another application.");
-                } else if (event.error !== "no-speech" && event.error !== "aborted") {
-                    setNotice("Voice recognition paused. Select Resume listening to try again.");
-                }
-            };
-            recognition.onend = () => {
-                if (activeRef.current && !mutedRef.current && (!speakingRef.current || echoCancellationRef.current)) {
-                    window.setTimeout(() => {
-                        if (activeRef.current && !mutedRef.current && (!speakingRef.current || echoCancellationRef.current)) {
-                            try { recognition.start(); } catch (_) {}
-                        }
-                    }, 350);
-                }
-            };
-            recognitionRef.current = recognition;
-        }
+    const startListening = () => {
+        let recognition = recognitionRef.current;
+        if (!recognition) recognition = createRecognition();
+        if (!recognition) return;
 
         activeRef.current = true;
         mutedRef.current = false;
         setActive(true);
         setMuted(false);
-        if (echoReady && vadMonitorRef.current && vadFrameRef.current === null) {
-            vadFrameRef.current = window.requestAnimationFrame(vadMonitorRef.current);
+        if (resumeListeningTimerRef.current !== null) {
+            window.clearTimeout(resumeListeningTimerRef.current);
+            resumeListeningTimerRef.current = null;
         }
 
-        if (speakingRef.current && !echoReady) {
-            setNotice("Your browser cannot provide echo cancellation. Voxora will resume listening after it finishes speaking; use Stop speaking to interrupt.");
+        if (speakingRef.current) {
+            setNotice("Voxora is speaking. Microphone listening will resume when playback finishes.");
             return;
         }
 
         try {
-            recognitionRef.current.start();
-            setNotice(echoReady
-                ? "Listening with echo cancellation. You can interrupt while Voxora is speaking."
-                : "Listening. Echo cancellation is unavailable, so microphone recognition pauses while Voxora speaks.");
+            ignoreRecognitionResultsRef.current = false;
+            recognitionListeningRef.current = true;
+            recognition.start();
+            setNotice("Listening. Voxora pauses microphone recognition while speaking to prevent audio feedback.");
         } catch (error) {
             if (error?.name !== "InvalidStateError") {
+                recognitionListeningRef.current = false;
                 activeRef.current = false;
+                if (recognitionRef.current === recognition) recognitionRef.current = null;
                 setActive(false);
-                recognitionRef.current?.stop();
-                releaseAudioMonitor();
+                try { recognition.stop(); } catch (_) {}
                 setNotice("Your browser needs a tap to enable the microphone. Select Enable voice.");
             }
         }
     };
 
-    const resumeListening = () => {
-        if (!activeRef.current || mutedRef.current || busyRef.current) return;
-        if (speakingRef.current && !echoCancellationRef.current) return;
-        try { recognitionRef.current?.start(); } catch (_) {}
+    const resumeListening = (minimumDelay = 700) => {
+        if (!activeRef.current || mutedRef.current || busyRef.current || speakingRef.current) return;
+        if (resumeListeningTimerRef.current !== null) {
+            window.clearTimeout(resumeListeningTimerRef.current);
+            resumeListeningTimerRef.current = null;
+        }
+        const quietDelay = Math.max(minimumDelay, audioOutputGuardUntilRef.current - Date.now());
+        resumeListeningTimerRef.current = window.setTimeout(() => {
+            resumeListeningTimerRef.current = null;
+            if (!activeRef.current || mutedRef.current || busyRef.current || speakingRef.current) return;
+            let recognition = recognitionRef.current;
+            if (!recognition) recognition = createRecognition();
+            if (!recognition || recognitionListeningRef.current) return;
+            try {
+                ignoreRecognitionResultsRef.current = false;
+                recognitionListeningRef.current = true;
+                recognition.start();
+                setNotice("Listening.");
+            } catch (error) {
+                if (error?.name !== "InvalidStateError") {
+                    recognitionListeningRef.current = false;
+                    if (recognitionRef.current === recognition) recognitionRef.current = null;
+                    setNotice("Voice recognition could not resume. Select Resume listening to try again.");
+                }
+            }
+        }, quietDelay);
     };
 
     const speak = (text, options = {}) => {
@@ -406,9 +368,9 @@ export default function VoiceAssistant() {
 
         // Microphone mute affects input only. It must never disable speaker output.
         speakingRef.current = true;
-        speakingTextRef.current = content;
-        setSpeaking(false);
-        setNotice("Preparing Voxora's spoken response…");
+        ignoreRecognitionResultsRef.current = true;
+        setSpeaking(true);
+        setNotice("Preparing Voxora's spoken response. Microphone listening is paused…");
         pendingSpeechRef.current = null;
         if (welcome) {
             welcomePendingRef.current = true;
@@ -416,16 +378,18 @@ export default function VoiceAssistant() {
             welcomePendingRef.current = false;
             removeWelcomeGestureListener();
         }
-        if (!echoCancellationRef.current) recognitionRef.current?.stop();
+        if (resumeListeningTimerRef.current !== null) {
+            window.clearTimeout(resumeListeningTimerRef.current);
+            resumeListeningTimerRef.current = null;
+        }
 
-        let firstSegment = true;
         const finish = () => {
             if (runId !== speechRunRef.current) return;
             clearSpeechWatchdog();
             speakingRef.current = false;
-            speakingTextRef.current = "";
             setSpeaking(false);
-            resumeListening();
+            audioOutputGuardUntilRef.current = Date.now() + 900;
+            resumeListening(900);
         };
 
         const fail = (reason) => {
@@ -435,8 +399,8 @@ export default function VoiceAssistant() {
             try { synthesis.cancel(); } catch (_) {}
             speechQueueRef.current = [];
             speakingRef.current = false;
-            speakingTextRef.current = "";
             setSpeaking(false);
+            audioOutputGuardUntilRef.current = Date.now() + 900;
             const detail = String(reason || "playback did not start").replace(/[-_]/g, " ");
             pendingSpeechRef.current = { text: content, welcome };
             if (welcome) {
@@ -445,7 +409,7 @@ export default function VoiceAssistant() {
             } else {
                 setNotice(`Voxora could not play audio (${detail}). Check your device media volume and browser audio settings.`);
             }
-            resumeListening();
+            resumeListening(900);
         };
 
         const speakNext = () => {
@@ -461,7 +425,6 @@ export default function VoiceAssistant() {
             }
 
             const segment = speechQueueRef.current.shift();
-            speakingTextRef.current = segment;
             const utterance = new Utterance(segment);
             utterance.rate = 0.96;
             utterance.pitch = 1;
@@ -499,13 +462,12 @@ export default function VoiceAssistant() {
                     speechWatchdogRef.current = null;
                 }
                 setSpeaking(true);
-                setNotice("Voxora is speaking.");
+                setNotice("Voxora is speaking. Microphone listening is paused to prevent audio feedback.");
                 // Some browsers fire onstart but never deliver onend. Do not leave
                 // the interface permanently stuck in the speaking state.
                 speechEndWatchdogRef.current = window.setTimeout(() => {
                     if (runId === speechRunRef.current) fail("playback stalled");
                 }, Math.max(15000, Math.min(120000, segment.length * 120)));
-                if (firstSegment) firstSegment = false;
             };
 
             utterance.onend = () => {
@@ -538,15 +500,19 @@ export default function VoiceAssistant() {
             }
         };
 
-        // Calling cancel() on an idle synthesis engine can silence subsequent
-        // utterances in some mobile browsers. Only cancel an active utterance,
-        // and give the engine a short reset interval before queuing the next one.
-        if (previousSpeechActive) {
+        // Do not rely on getUserMedia echoCancellation for Web Speech API input:
+        // SpeechRecognition owns a separate capture path. Abort recognition and
+        // wait for its onend event before starting any speaker output.
+        const beginSpeechQueue = () => {
+            const engineResetDelay = previousSpeechActive ? (userGesture ? 80 : 120) : 0;
             window.setTimeout(() => {
                 if (runId === speechRunRef.current) speakNext();
-            }, userGesture ? 80 : 120);
+            }, engineResetDelay + 250);
+        };
+        if (recognitionListeningRef.current) {
+            waitForRecognitionToStop().then(beginSpeechQueue);
         } else {
-            speakNext();
+            beginSpeechQueue();
         }
         return true;
     };
@@ -1140,8 +1106,7 @@ export default function VoiceAssistant() {
     const mute = () => {
         mutedRef.current = true;
         setMuted(true);
-        recognitionRef.current?.stop();
-        releaseAudioMonitor();
+        stopRecognition();
         setNotice("Microphone muted. Voxora can still speak; select Unmute microphone to resume listening.");
     };
 
@@ -1150,9 +1115,8 @@ export default function VoiceAssistant() {
         mutedRef.current = false;
         setActive(false);
         setMuted(false);
-        recognitionRef.current?.stop();
+        stopRecognition();
         interruptSpeech();
-        releaseAudioMonitor();
         setNotice("Voice access is paused. Select Enable voice to start again.");
     };
 
@@ -1217,11 +1181,15 @@ export default function VoiceAssistant() {
             activeRef.current = false;
             speechRunRef.current += 1;
             clearSpeechWatchdog();
-            recognitionRef.current?.stop();
+            stopRecognition();
+            recognitionListeningRef.current = false;
+            recognitionRef.current = null;
+            finishRecognitionStopWait();
+            if (resumeListeningTimerRef.current !== null) window.clearTimeout(resumeListeningTimerRef.current);
+            if (recognitionStopTimerRef.current !== null) window.clearTimeout(recognitionStopTimerRef.current);
             synthesis?.cancel();
             speechQueueRef.current = [];
             pendingSpeechRef.current = null;
-            releaseAudioMonitor();
         };
     }, []);
 
@@ -1295,7 +1263,7 @@ export default function VoiceAssistant() {
     <div className={"voxora-control-dock" + (footerVisible ? " is-footer-visible" : "") + (dockExpanded ? " is-expanded" : "")} role="region" aria-label="Voxora controls">
         <div className="voxora-control-status" role="status" aria-live="polite" aria-atomic="true">
             <span className={"voxora-control-indicator" + (active && !muted ? " is-active" : "")} aria-hidden="true"/>
-            <span>{retrySeconds > 0 ? "AI cooldown" : busy ? "Processing" : speaking ? (echoCancellationRef.current ? "Speaking · interruptible" : "Speaking · listening paused") : active && !muted ? "Listening" : muted ? "Microphone muted" : "Voice access paused"}</span>
+            <span>{retrySeconds > 0 ? "AI cooldown" : busy ? "Processing" : speaking ? "Speaking · microphone paused" : active && !muted ? "Listening" : muted ? "Microphone muted" : "Voice access paused"}</span>
             {retrySeconds > 0 && <span aria-hidden="true">· {retrySeconds}s</span>}
         </div>
         {(!footerVisible || dockExpanded) && <>

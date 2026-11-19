@@ -1,3 +1,53 @@
+VOXORA ACCESS — V22 HALF-DUPLEX VOICE SEPARATION
+
+This update corrects a voice-input/output feedback defect reported after V21 deployment. Voxora could recognise its own synthesized speech as if it were the user's voice. The earlier implementation used a separate getUserMedia stream to inspect echo-cancelled audio while the browser SpeechRecognition API continued listening through its own capture path. Echo cancellation on that separate stream did not guarantee echo cancellation in the recognition engine.
+
+1. STRICT INPUT/OUTPUT SEPARATION
+   - Removed the separate getUserMedia / AudioContext echo-monitor stream and the related voice-activity detector.
+   - Voxora now uses half-duplex audio: when a spoken response is prepared, it marks speech as active, aborts the SpeechRecognition session, and waits for the recognition onend event before starting speech synthesis.
+   - If the browser does not dispatch onend, a bounded 1.5-second fallback issues another abort before allowing playback to proceed.
+   - Speech recognition remains stopped for every speech segment, including long-document chunk transitions.
+   - Each resumed listening period uses a fresh SpeechRecognition instance. Results from an aborted or ended instance are rejected even if a browser delivers them late.
+   - Results are also discarded when voice access is paused, during speech output, and throughout the post-playback quiet interval.
+
+2. POST-PLAYBACK QUIET PERIOD
+   - After speech synthesis finishes or fails, Voxora waits 900 ms before restarting recognition.
+   - Buffered recognition results received while Voxora is speaking or during the quiet interval are discarded.
+   - Pending recognition-resume timers are cancelled whenever new speech starts, preventing a delayed timer from reopening the microphone during playback.
+   - The microphone remains logically separate from the speaker: mute affects only input, while Voxora's speech output continues normally.
+   - The Stop speaking control remains available and resumes listening only after a 650 ms settling interval.
+
+3. USER FEEDBACK AND EXPECTATIONS
+   - The status now reports “Speaking · microphone paused” while Voxora is speaking.
+   - Status messages explain that recognition is paused to prevent audio feedback.
+   - The welcome greeting no longer promises spoken interruption; it explains that users can use Stop speaking.
+   - Users can still speak commands normally after Voxora has finished and listening has resumed.
+
+4. TESTS AND DOCUMENTATION
+   - Added source-contract checks for half-duplex operation, recognition abort, onend coordination and post-playback guard.
+   - Extended the browser test fixture to simulate recognition lifecycle events and held speech output.
+   - Added a browser regression test that verifies recognition is off during speech, a self-echo-like command is ignored, and listening resumes after playback.
+   - Updated README behaviour and browser limitations.
+
+VALIDATION
+   - Python unit and source-regression tests: 97 passed.
+   - Python compilation: passed.
+   - Browser test JavaScript syntax: passed.
+   - JSX/Vite production build and Playwright/axe browser suite: not run because root and browser-test Node dependencies are not installed in this environment.
+   - Real-device microphone/speaker verification is still required after deployment; browser mocks cannot establish acoustic performance on every device.
+   - No GitHub push or production deployment is performed by this source-package preparation.
+
+GIT COMMIT
+   Message: fix(voice): pause recognition during Voxora speech to prevent self-echo
+   Description:
+   - Replace unreliable separate-stream echo monitoring with strict half-duplex voice handling.
+   - Abort speech recognition before text-to-speech and wait for recognition shutdown.
+   - Resume listening after a 900 ms post-playback quiet interval.
+   - Discard recognition results during playback and the quiet interval.
+   - Update voice status, welcome wording, regression tests and documentation.
+
+--- PREVIOUS RELEASE NOTES: V21 ---
+
 VOXORA ACCESS — V21 VOICE CONTROL SIMPLIFICATION
 
 This update builds on V20. It removes the two diagnostic/replay buttons from Voxora's controls without disabling the automatic welcome greeting or changing the existing voice interaction model.
