@@ -43,11 +43,21 @@ class AccessibilityContractTests(unittest.TestCase):
         cls.voice = (
             ROOT / "src" / "components" / "VoiceAssistant.jsx"
         ).read_text(encoding="utf-8")
+        cls.voice_data = (ROOT / "src" / "data" / "voice.js").read_text(encoding="utf-8")
         cls.css = (ROOT / "src" / "styles" / "app.css").read_text(encoding="utf-8")
         cls.shell = (ROOT / "templates" / "spa.html").read_text(encoding="utf-8")
 
     def test_document_language_is_declared(self):
         self.assertRegex(self.shell, r'<html\s+lang="en">')
+
+    def test_auth_panel_eyebrow_meets_wcag_aa_contrast(self):
+        rule = re.search(
+            r"#voxora-app-root \.react-auth > div \.react-eyebrow \{([^}]*)\}",
+            self.css,
+        )
+        self.assertIsNotNone(rule)
+        self.assertIn("color: var(--react-lime);", rule.group(1))
+        self.assertGreaterEqual(_contrast_ratio("#c7f000", "#12372a"), 4.5)
 
     def test_skip_link_targets_focusable_main_landmark(self):
         self.assertIn('className="react-skip-link" href="#main-content"', self.app)
@@ -76,6 +86,8 @@ class AccessibilityContractTests(unittest.TestCase):
         self.assertIn('colSpan: metadata?.colspan > 1 ? metadata.colspan : undefined', self.reader_component)
         self.assertIn('rowSpan: metadata?.rowspan > 1 ? metadata.rowspan : undefined', self.reader_component)
         self.assertIn('block.type === "speaker_notes"', self.reader_component)
+        self.assertIn('<h2>Speaker notes</h2>', self.reader_component)
+        self.assertNotIn('<h4>Speaker notes</h4>', self.reader_component)
         self.assertIn('block.type === "image_placeholder"', self.reader_component)
         self.assertIn('path.endsWith("/read")&&data.resource', self.app)
         self.assertIn("Refresh reading view", self.reader_component)
@@ -210,20 +222,27 @@ class AccessibilityContractTests(unittest.TestCase):
         self.assertIn('navigator.mediaDevices.getUserMedia({', self.voice)
         self.assertIn('echoCancellation: true, noiseSuppression: true, autoGainControl: true', self.voice)
         self.assertIn('const recentUserVoice = echoMonitorReadyRef.current && Date.now() <= userVoiceUntilRef.current', self.voice)
-        self.assertIn('if (!recentUserVoice || isLikelySpeechEcho(transcript)) continue;', self.voice)
+        self.assertIn('const eligibleAlternatives = alternatives.filter((alternative) => {', self.voice)
+        self.assertIn('const explicitBargeIn = isExplicitBargeInCommand(alternative.transcript)', self.voice)
+        self.assertIn('const addressedToVoxora = isAddressedToVoxora(alternative.transcript)', self.voice)
+        self.assertIn('const likelyEcho = isLikelySpeechEcho(alternative.transcript, spokenText)', self.voice)
+        self.assertIn('return (explicitBargeIn || addressedToVoxora) && (!likelyEcho || explicitBargeIn)', self.voice)
         self.assertIn('interruptSpeechRef.current?.({ userBargeIn: true });', self.voice)
         self.assertIn('recognition.onend = () => {', self.voice)
         self.assertIn('if (recognitionRef.current !== recognition) return;', self.voice)
         self.assertIn('audioOutputGuardUntilRef.current = Date.now() + (echoAwareBargeIn ? 350 : 900)', self.voice)
         self.assertIn('ignoreRecognitionResultsRef.current = !echoAwareBargeIn', self.voice)
         self.assertIn('if (speakingRef.current && !echoMonitorReadyRef.current)', self.voice)
-        self.assertIn('waitForRecognitionToStop().then(beginSpeechQueue)', self.voice)
+        self.assertIn('recognitionStopWaiterRef.current.promise.then(beginRecognition)', self.voice)
         self.assertIn('settings.echoCancellation !== true', self.voice)
-        self.assertIn('now - voiceStartRef.current >= 180', self.voice)
-        self.assertIn('const isLikelySpeechEcho = (transcript, speechTextOverride = "") => {', self.voice)
-        self.assertIn('overlap >= 0.82', self.voice)
-        self.assertIn('currentUtteranceTextRef.current', self.voice)
-        self.assertIn('rawText.trim().replace(/^(?:hey\\s+)?voxora[,. ]+/i, "")', self.voice)
+        self.assertIn('createVoiceActivityDetector()', self.voice)
+        self.assertIn('userVoiceUntilRef.current = Date.now() + 900', self.voice)
+        self.assertIn('createVoiceActivityDetector', self.voice_data)
+        self.assertIn('longestCommonSubsequenceLength', self.voice_data)
+        self.assertIn('bigramCoverage', self.voice_data)
+        self.assertIn('isExplicitBargeInCommand', self.voice_data)
+        self.assertIn('isAddressedToVoxora', self.voice_data)
+        self.assertIn(r'rawText.trim().replace(/^(?:hey\s+)?voxora[,. ]+/i, "")', self.voice)
 
     def test_recognition_start_failure_resets_state(self):
         start_block = self.voice.split('const startListening = () => {', 1)[1].split('const resumeListening', 1)[0]
@@ -380,7 +399,7 @@ class AccessibilityContractTests(unittest.TestCase):
         self.assertIn('if (recognitionListeningRef.current && !echoAwareBargeIn)', speech_block)
         self.assertIn('waitForRecognitionToStop().then(beginSpeechQueue)', speech_block)
         self.assertIn('resumeListening(echoAwareBargeIn ? 350 : 900)', speech_block)
-        self.assertIn('if (!recentUserVoice || isLikelySpeechEcho(transcript)) continue;', self.voice)
+        self.assertIn('if (!recentUserVoice || !eligibleAlternatives.length) continue;', self.voice)
         self.assertIn('interruptSpeechRef.current?.({ userBargeIn: true });', self.voice)
         self.assertIn('const microphoneMonitorRef = useRef(', self.voice)
         self.assertIn('settings.echoCancellation !== true', self.voice)
@@ -394,6 +413,7 @@ class AccessibilityContractTests(unittest.TestCase):
         self.assertNotIn('if (mutedRef.current) return', speak_block)
         self.assertIn('Microphone mute affects input only. It must never disable speaker output.', speak_block)
         self.assertNotIn('interruptSpeech()', mute_block)
+        self.assertIn('void waitForRecognitionToStop()', mute_block)
         self.assertIn('setNotice("Microphone muted.")', mute_block)
 
     def test_voice_controls_hide_internal_audio_and_provider_details(self):

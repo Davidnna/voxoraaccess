@@ -551,6 +551,10 @@
     color: var(--react-lime);
 }
 
+#voxora-app-root .react-auth > div .react-eyebrow {
+    color: var(--react-lime);
+}
+
 #voxora-app-root .react-auth > div p:last-child {
     color: #e0ebe1;
     line-height: 1.8;
@@ -1438,7 +1442,7 @@ body{padding-bottom:0}
     background: #eef6f2;
 }
 
-#voxora-app-root .react-speaker-notes h4 {
+#voxora-app-root .react-speaker-notes h2 {
     margin: 0 0 .45rem;
     font-size: 1rem;
 }

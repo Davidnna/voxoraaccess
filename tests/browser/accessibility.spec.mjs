@@ -311,13 +311,18 @@ test.describe("Voxora browser accessibility", () => {
         // Even with a strong microphone signal, a transcript matching the
         // active spoken passage is treated as Voxora echo, not a user command.
         await page.evaluate(() => { window.__voxoraMicLevel = 0.08; });
-        await page.waitForTimeout(240);
+        await page.waitForTimeout(600);
         await page.evaluate(() => window.__voxoraRecognitionInstances.at(-1)?.emit("Introduction"));
         await expect(page).toHaveURL(/\/resource\/41\/read$/);
         await page.evaluate(() => window.__voxoraRecognitionInstances.at(-1)?.emit("A sample passage for assistive reading"));
         await expect(page).toHaveURL(/\/resource\/41\/read$/);
 
         // A different near-end phrase is accepted and interrupts playback.
+        // Unaddressed room speech must not interrupt active narration.
+        await page.evaluate(() => window.__voxoraRecognitionInstances.at(-1)?.emit("go to dashboard"));
+        await expect(page).toHaveURL(/\/resource\/41\/read$/);
+
+        // A command addressed to Voxora is allowed to interrupt.
         await page.evaluate(() => window.__voxoraRecognitionInstances.at(-1)?.emit("Voxora, go to dashboard"));
         await expect(page).toHaveURL(/\/dashboard$/);
         await expect.poll(() => page.evaluate(() => window.__voxoraSpeechCancelCount)).toBeGreaterThan(0);
@@ -331,11 +336,11 @@ test.describe("Voxora browser accessibility", () => {
         await page.getByRole("button", { name: "Read aloud with Voxora" }).click();
         await page.waitForFunction(() => window.__voxoraSpeechCallCount === 1 && window.__voxoraReleaseSpeech);
         await page.evaluate(() => { window.__voxoraMicLevel = 0.08; });
-        await page.waitForTimeout(240);
+        await page.waitForTimeout(600);
 
         // A changed interim hypothesis can briefly look like user speech.
         // The final hypothesis must still be checked against the cancelled TTS.
-        await page.evaluate(() => window.__voxoraRecognitionInstances.at(-1)?.emit("unrelated interim phrase", false));
+        await page.evaluate(() => window.__voxoraRecognitionInstances.at(-1)?.emit("Voxora, open my dashboard", false));
         await expect.poll(() => page.evaluate(() => window.__voxoraSpeechCancelCount)).toBeGreaterThan(0);
         await page.evaluate(() => window.__voxoraRecognitionInstances.at(-1)?.emit("A sample passage for assistive reading", true));
         await expect(page).toHaveURL(/\/resource\/41\/read$/);
@@ -363,7 +368,7 @@ test.describe("Voxora browser accessibility", () => {
         await page.getByRole("button", { name: "Read aloud with Voxora" }).click();
         await page.waitForFunction(() => window.__voxoraSpeechCallCount === 1 && window.__voxoraReleaseSpeech);
         await page.evaluate(() => { window.__voxoraMicLevel = 0.08; });
-        await page.waitForTimeout(180);
+        await page.waitForTimeout(600);
         await page.evaluate(() => window.__voxoraRecognitionInstances.at(-1)?.emit("stop"));
         await expect.poll(() => page.evaluate(() => window.__voxoraSpeechCancelCount)).toBeGreaterThan(0);
         await expect(controls.getByRole("status").first()).not.toContainText("Speaking");

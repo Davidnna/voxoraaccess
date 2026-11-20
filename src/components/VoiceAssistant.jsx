@@ -3,6 +3,12 @@ import { createPortal } from "react-dom";
 import { useLocation, useNavigate } from "react-router-dom";
 import { accountNav, legal, nav, normalizeVoiceText } from "../data/navigation.js";
 import { isDocumentReadCommand } from "../data/reader.js";
+import {
+    createVoiceActivityDetector,
+    isAddressedToVoxora,
+    isExplicitBargeInCommand,
+    isLikelySpeechEcho,
+} from "../data/voice.js";
 
 const WELCOME_TEXT = "Hello, welcome to Voxora Access. I am Voxora, your voice assistant. I can help you find learning resources, navigate the website, and use its features.";
 
@@ -71,8 +77,8 @@ export default function VoiceAssistant() {
     const microphoneMonitorPromiseRef = useRef(null);
     const microphoneMonitorGenerationRef = useRef(0);
     const userVoiceUntilRef = useRef(0);
-    const voiceStartRef = useRef(0);
-    const microphoneNoiseFloorRef = useRef(0.005);
+    const voiceActivityDetectorRef = useRef(null);
+    const recognitionRetryDelayRef = useRef(350);
 
     useEffect(() => { activeRef.current = active; }, [active]);
     useEffect(() => { headingIndexRef.current = -1; }, [voiceLocation.pathname]);
@@ -125,13 +131,16 @@ export default function VoiceAssistant() {
         if (monitor.frameId !== null) window.cancelAnimationFrame(monitor.frameId);
         try { monitor.source?.disconnect(); } catch (_) {}
         try { monitor.analyser?.disconnect(); } catch (_) {}
+        monitor.filters?.forEach((filter) => {
+            try { filter.disconnect(); } catch (_) {}
+        });
         monitor.stream?.getTracks?.().forEach(track => track.stop());
         try { monitor.context?.close?.(); } catch (_) {}
         microphoneMonitorRef.current = { stream: null, context: null, source: null, analyser: null, frameId: null };
         echoMonitorReadyRef.current = false;
         userVoiceUntilRef.current = 0;
-        voiceStartRef.current = 0;
-        microphoneNoiseFloorRef.current = 0.005;
+        voiceActivityDetectorRef.current?.reset?.();
+        voiceActivityDetectorRef.current = null;
         microphoneMonitorPromiseRef.current = null;
     };
 
@@ -174,10 +183,25 @@ export default function VoiceAssistant() {
                 const source = context.createMediaStreamSource(stream);
                 const analyser = context.createAnalyser();
                 analyser.fftSize = 1024;
-                analyser.smoothingTimeConstant = 0.15;
-                source.connect(analyser);
+                analyser.smoothingTimeConstant = 0.12;
+                const filters = [];
+                if (typeof context.createBiquadFilter === "function") {
+                    const highPass = context.createBiquadFilter();
+                    highPass.type = "highpass";
+                    highPass.frequency.value = 110;
+                    const lowPass = context.createBiquadFilter();
+                    lowPass.type = "lowpass";
+                    lowPass.frequency.value = 4200;
+                    source.connect(highPass);
+                    highPass.connect(lowPass);
+                    lowPass.connect(analyser);
+                    filters.push(highPass, lowPass);
+                } else {
+                    source.connect(analyser);
+                }
 
-                microphoneMonitorRef.current = { stream, context, source, analyser, frameId: null };
+                microphoneMonitorRef.current = { stream, context, source, analyser, filters, frameId: null };
+                voiceActivityDetectorRef.current = createVoiceActivityDetector();
                 echoMonitorReadyRef.current = true;
                 const samples = new Float32Array(analyser.fftSize);
                 const sampleMicrophone = () => {
@@ -190,21 +214,8 @@ export default function VoiceAssistant() {
                     }
                     const rms = Math.sqrt(energy / samples.length);
                     const now = performance.now();
-
-                    // Restore the more conservative V19 gate: a stronger signal
-                    // must persist for 180 ms before it can corroborate speech.
-                    if (rms < 0.014) {
-                        microphoneNoiseFloorRef.current = (microphoneNoiseFloorRef.current * 0.96) + (rms * 0.04);
-                    }
-                    const threshold = Math.max(0.018, microphoneNoiseFloorRef.current * 3.0);
-                    if (rms > threshold) {
-                        if (!voiceStartRef.current) voiceStartRef.current = now;
-                        if (now - voiceStartRef.current >= 180) {
-                            userVoiceUntilRef.current = Date.now() + 1500;
-                        }
-                    } else if (!voiceStartRef.current || now - voiceStartRef.current > 180) {
-                        voiceStartRef.current = 0;
-                    }
+                    const userVoiceDetected = voiceActivityDetectorRef.current?.(rms, now) || false;
+                    if (userVoiceDetected) userVoiceUntilRef.current = Date.now() + 900;
                     monitor.frameId = window.requestAnimationFrame(sampleMicrophone);
                 };
                 microphoneMonitorRef.current.frameId = window.requestAnimationFrame(sampleMicrophone);
@@ -273,28 +284,6 @@ export default function VoiceAssistant() {
         return promise;
     };
 
-    const isLikelySpeechEcho = (transcript, speechTextOverride = "") => {
-        const heardWords = normalizeVoiceText(transcript).split(" ").filter(Boolean);
-        const spokenText = speechTextOverride || recentSpeechSegmentsRef.current.join(" ") || currentUtteranceTextRef.current || speakingTextRef.current;
-        const spokenWords = normalizeVoiceText(spokenText).split(" ").filter(Boolean);
-        if (!heardWords.length || !spokenWords.length) return false;
-
-        const normalized = heardWords.join(" ");
-        const explicitInterruption = /^(?:(?:hey )?voxora )?(?:please )?(stop|wait|hold on|pause|interrupt|be quiet)\b/i.test(normalized);
-        if (explicitInterruption) return false;
-
-        const spokenSet = new Set(spokenWords);
-        if (heardWords.length === 1) return spokenSet.has(heardWords[0]);
-        const overlap = heardWords.filter((word) => spokenSet.has(word)).length / heardWords.length;
-        const heardPhrase = ` ${heardWords.join(" ")} `;
-        const spokenPhrase = ` ${spokenWords.join(" ")} `;
-        const contiguousMatch = spokenPhrase.includes(heardPhrase);
-
-        // Reject transcripts that closely repeat the active utterance. Short
-        // interruption commands remain eligible for barge-in.
-        return contiguousMatch || (heardWords.length >= 2 && heardWords.every((word) => spokenSet.has(word))) || (heardWords.length >= 3 && overlap >= 0.82);
-    };
-
     const createRecognition = () => {
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         if (!SpeechRecognition) {
@@ -305,6 +294,7 @@ export default function VoiceAssistant() {
         const recognition = new SpeechRecognition();
         recognition.continuous = true;
         recognition.interimResults = true;
+        recognition.maxAlternatives = 3;
         recognition.lang = "en-NG";
         recognition.onstart = () => {
             if (recognitionRef.current === recognition) recognitionListeningRef.current = true;
@@ -316,14 +306,32 @@ export default function VoiceAssistant() {
             for (let i = event.resultIndex; i < event.results.length; i += 1) {
                 const result = event.results[i];
                 if (!activeRef.current || ignoreRecognitionResultsRef.current || mutedRef.current) continue;
-                const transcript = result[0].transcript.trim();
-                if (!transcript) continue;
+                const alternatives = Array.from(result)
+                    .map((alternative) => ({
+                        transcript: String(alternative?.transcript || "").trim(),
+                        confidence: Number(alternative?.confidence) || 0,
+                    }))
+                    .filter((alternative) => alternative.transcript);
+                if (!alternatives.length) continue;
 
                 const recentUserVoice = echoMonitorReadyRef.current && Date.now() <= userVoiceUntilRef.current;
+                let transcript = alternatives[0].transcript;
                 if (speakingRef.current) {
-                    // Require a real near-end signal from the independently
-                    // processed microphone and reject words matching current TTS.
-                    if (!recentUserVoice || isLikelySpeechEcho(transcript)) continue;
+                    // During playback, accept only an explicit stop/pause command
+                    // or a command addressed to Voxora. This prevents unrelated
+                    // room speech and residual speaker echo from triggering actions.
+                    const spokenText = recentSpeechSegmentsRef.current.join(" ")
+                        || currentUtteranceTextRef.current
+                        || speakingTextRef.current;
+                    const eligibleAlternatives = alternatives.filter((alternative) => {
+                        const explicitBargeIn = isExplicitBargeInCommand(alternative.transcript);
+                        const addressedToVoxora = isAddressedToVoxora(alternative.transcript);
+                        const likelyEcho = isLikelySpeechEcho(alternative.transcript, spokenText);
+                        return (explicitBargeIn || addressedToVoxora) && (!likelyEcho || explicitBargeIn);
+                    });
+                    if (!recentUserVoice || !eligibleAlternatives.length) continue;
+                    eligibleAlternatives.sort((left, right) => right.confidence - left.confidence);
+                    transcript = eligibleAlternatives[0].transcript;
                     interruptSpeechRef.current?.({ userBargeIn: true });
                     // Stop playback on interim speech, but execute only the
                     // final transcript so partial phrases never trigger actions.
@@ -365,6 +373,7 @@ export default function VoiceAssistant() {
                     setBusy(false);
                 }
                 userVoiceUntilRef.current = 0;
+                recognitionRetryDelayRef.current = 350;
                 handleVoiceInput(transcript);
                 return;
             }
@@ -386,6 +395,9 @@ export default function VoiceAssistant() {
                 setActive(false);
                 try { recognition.stop(); } catch (_) {}
                 setNotice("The microphone isn't available. Check your device settings and try again.");
+            } else if (event.error === "network") {
+                recognitionRetryDelayRef.current = Math.min(8000, Math.max(700, recognitionRetryDelayRef.current * 2));
+                setNotice("Voice input is temporarily unavailable. Voxora will retry shortly.");
             } else if (event.error !== "no-speech" && event.error !== "aborted") {
                 setNotice("Voice input paused. Select Enable microphone to try again.");
             }
@@ -398,7 +410,7 @@ export default function VoiceAssistant() {
             }
             finishRecognitionStopWait(recognition);
             if (isCurrentRecognition && activeRef.current && !mutedRef.current && (!speakingRef.current || echoMonitorReadyRef.current) && !busyRef.current) {
-                resumeListening(350);
+                resumeListening(recognitionRetryDelayRef.current);
             }
         };
         recognitionRef.current = recognition;
@@ -929,11 +941,11 @@ export default function VoiceAssistant() {
         const text = rawText.trim().replace(/^(?:hey\s+)?voxora[,. ]+/i, "").trim();
         if (!text || busyRef.current) return;
         const command = text.toLowerCase().replace(/[.!?]+$/, "").trim();
-        if (/^(voxora[,. ]+)?(mute yourself|mute)$/i.test(command)) {
+        if (/^(?:please )?(voxora[,. ]+)?(mute yourself|mute)(?: please)?$/i.test(command)) {
             mute();
             return;
         }
-        if (/^(?:(?:hey )?voxora[,. ]+)?(stop|stop speaking|be quiet|wait|hold on|pause|interrupt)$/i.test(command)) {
+        if (/^(?:please )?(?:(?:hey )?voxora[,. ]+)?(stop|stop speaking|stop reading|stop talking|be quiet|wait|hold on|pause|interrupt|cancel)(?: please)?$/i.test(command)) {
             interruptSpeech();
             resumeListening(150);
             setNotice("Voxora stopped speaking. I'm listening.");
@@ -1023,12 +1035,6 @@ export default function VoiceAssistant() {
                     : "";
                 speak(prefix + pageText);
             }
-            return;
-        }
-        if (/^(stop reading|stop talking)$/i.test(command)) {
-            interruptSpeech();
-            setNotice("Reading stopped.");
-            resumeListening();
             return;
         }
         if (/^(explain (this )?(page|screen|document|resource)|what is on this page|what does this page say|summarize this page|explain this content)$/i.test(command)) {
@@ -1519,7 +1525,7 @@ export default function VoiceAssistant() {
     const mute = () => {
         mutedRef.current = true;
         setMuted(true);
-        stopRecognition();
+        void waitForRecognitionToStop();
         stopMicrophoneMonitor();
         setNotice("Microphone muted.");
     };
@@ -1529,7 +1535,7 @@ export default function VoiceAssistant() {
         mutedRef.current = false;
         setActive(false);
         setMuted(false);
-        stopRecognition();
+        void waitForRecognitionToStop();
         stopMicrophoneMonitor();
         interruptSpeech();
         setNotice("Voice access paused.");

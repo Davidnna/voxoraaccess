@@ -28,6 +28,9 @@ jobs:
       - name: Check Python syntax
         run: python -m compileall -q app.py document_accessibility.py tests
 
+      - name: Validate Jinja template syntax
+        run: python -c "from jinja2 import Environment; from pathlib import Path; Environment().parse(Path('templates/spa.html').read_text(encoding='utf-8'))"
+
       - name: Run source regression checks
         run: python -m unittest discover -s tests -v
 
@@ -41,6 +44,9 @@ jobs:
 
       - name: Run intelligent reader unit tests
         run: npm run test:reader
+
+      - name: Run voice processing unit tests
+        run: npm run test:voice
 
       - name: Build production frontend
         run: npm run build

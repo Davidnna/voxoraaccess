@@ -18,6 +18,21 @@ class ProjectIntegrityTests(unittest.TestCase):
             ROOT / "src" / "components" / "VoiceAssistant.jsx"
         ).read_text(encoding="utf-8")
 
+    def test_voice_helpers_are_part_of_the_frontend_test_suite(self):
+        voice_module = ROOT / "src" / "data" / "voice.js"
+        voice_tests = ROOT / "tests" / "voice.test.mjs"
+        package = (ROOT / "package.json").read_text(encoding="utf-8")
+        workflow = (ROOT / ".github" / "workflows" / "quality.yml").read_text(encoding="utf-8")
+        self.assertTrue(voice_module.is_file())
+        self.assertTrue(voice_tests.is_file())
+        self.assertIn('"test:voice": "node --test tests/voice.test.mjs"', package)
+        self.assertIn("npm run test:voice", workflow)
+
+    def test_template_format_workflow_validates_jinja_without_reformatting_template(self):
+        workflow = (ROOT / ".github" / "workflows" / "format.yml").read_text(encoding="utf-8")
+        self.assertIn("Environment().parse", workflow)
+        self.assertNotIn("djlint", workflow)
+
     def test_readme_is_the_only_markdown_file(self):
         ignored_dirs = {".git", ".pytest_cache", ".mypy_cache", ".ruff_cache", "node_modules", ".venv"}
         markdown = sorted(

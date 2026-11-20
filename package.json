@@ -5,7 +5,8 @@
     "type": "module",
     "scripts": {
         "build": "vite build",
-        "test:reader": "node --test tests/reader.test.mjs"
+        "test:reader": "node --test tests/reader.test.mjs",
+        "test:voice": "node --test tests/voice.test.mjs"
     },
     "dependencies": {
         "react": "^19.1.0",

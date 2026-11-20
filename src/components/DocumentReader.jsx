@@ -111,7 +111,7 @@ function DocumentBlocks({ blocks, segmentTargets }) {
         } else if (block.type === "speaker_notes") {
             rendered.push(
                 <section className="react-speaker-notes" aria-label="Speaker notes" key={index} data-reader-segment-index={segmentIndex(index)}>
-                    <h4>Speaker notes</h4><p>{block.text}</p>
+                    <h2>Speaker notes</h2><p>{block.text}</p>
                 </section>
             );
         } else if (block.type === "table") {
