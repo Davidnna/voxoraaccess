@@ -348,7 +348,7 @@ The database hostname must be reachable from inside the container. Do not use `l
 
 ## Document reading commands
 
-On an accessible document reading page, students can use the on-screen controls or say:
+From a resource details page, a student can say “Read this document aloud for me”. Voxora opens the structured reading view and begins at the saved reading position. On the reading page, students can use the on-screen controls or say:
 
 | Voice command | Action |
 |---|---|

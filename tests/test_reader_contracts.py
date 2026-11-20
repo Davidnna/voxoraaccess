@@ -107,6 +107,19 @@ class ReaderContractsTests(unittest.TestCase):
         ]:
             self.assertIn(command, self.voice)
 
+    def test_resource_page_read_request_routes_to_structured_reader(self):
+        self.assertIn('const resourceRoute = window.location.pathname.match(/^\\/resource\\/(\\d+)(\\/read)?$/);', self.voice)
+        self.assertIn("const documentReadRequest = isDocumentReadCommand(command)", self.voice)
+        self.assertIn("isDocumentReadCommand", self.reader)
+        self.assertIn('window.sessionStorage.setItem("voxora-read-after-navigation", resourceRoute[1])', self.voice)
+        self.assertIn('navigate(`/resource/${resourceRoute[1]}/read`)', self.voice)
+        self.assertIn('readerCommand("resume")', self.voice)
+
+    def test_reader_resumes_queued_request_after_navigation(self):
+        self.assertIn('window.sessionStorage.getItem("voxora-read-after-navigation")', self.frontend)
+        self.assertIn('window.sessionStorage.removeItem("voxora-read-after-navigation")', self.frontend)
+        self.assertIn('window.setTimeout(() => handleReaderCommand("resume"), 0)', self.frontend)
+
     def test_reading_position_is_highlighted_in_the_document(self):
         self.assertIn('data-reader-segment-index', self.frontend)
         self.assertIn('aria-current', self.frontend)

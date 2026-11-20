@@ -5,6 +5,7 @@ import {
     buildReadingSegments,
     buildSegmentTargetMap,
     findCurrentSectionIndex,
+    isDocumentReadCommand,
 } from "../src/data/reader.js";
 
 test("reading segments preserve heading and paragraph order", () => {
@@ -88,4 +89,27 @@ test("segment target map distinguishes document blocks and table rows", () => {
     assert.equal(map["0:"], 0);
     assert.equal(map["1:-1"], 1);
     assert.equal(map["1:1"], 2);
+});
+
+
+test("document-reading commands are recognised without treating summaries as read-aloud requests", () => {
+    for (const command of [
+        "Read this document aloud for me",
+        "Could you read the contents of this document?",
+        "Please read my lecture notes",
+        "Read this PDF to me",
+        "Read it aloud",
+        "Continue reading",
+        "Resume reading.",
+    ]) {
+        assert.equal(isDocumentReadCommand(command), true, command);
+    }
+    for (const command of [
+        "Summarize this document",
+        "Explain this PDF",
+        "What does this document say?",
+        "Open my resources",
+    ]) {
+        assert.equal(isDocumentReadCommand(command), false, command);
+    }
 });

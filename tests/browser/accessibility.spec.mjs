@@ -454,6 +454,17 @@ test.describe("Voxora browser accessibility", () => {
         expect(Math.abs((beforeScroll.viewportHeight - beforeScroll.dockBottom) - beforeScroll.computedBottom)).toBeLessThanOrEqual(2);
     });
 
+    test("document-reading voice command opens the structured reader and starts reading", async ({ page }) => {
+        await preparePage(page, "/resource/41");
+        const controls = await expandVoiceDock(page);
+        await controls.getByRole("button", { name: "Enable microphone" }).click();
+        await expect.poll(() => page.evaluate(() => window.__voxoraRecognitionInstances.at(-1)?.started)).toBe(true);
+        await page.evaluate(() => window.__voxoraRecognitionInstances.at(-1)?.emit("Read this document aloud for me"));
+        await expect(page).toHaveURL(/\/resource\/41\/read$/);
+        await expect.poll(() => page.evaluate(() => window.__voxoraSpeechOutput.join(" ")))
+            .toContain("A sample passage for assistive reading.");
+    });
+
     test("document preview has a title and a non-embedded alternative", async ({ page }) => {
         await preparePage(page, "/resource/41");
         await expect(page.getByTitle("PDF preview of PDF: Accessible sample resource")).toBeVisible();

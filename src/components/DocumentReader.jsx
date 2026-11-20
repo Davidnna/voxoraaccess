@@ -426,6 +426,18 @@ export default function DocumentReader({
             handleReaderCommand(detail.command, detail.sectionTitle || "");
         };
         window.addEventListener("voxora:reader-command", onCommand);
+        // A voice request made on the resource preview should begin reading
+        // after the structured reader and its event listener have mounted.
+        let queuedResourceId = "";
+        try {
+            queuedResourceId = window.sessionStorage.getItem("voxora-read-after-navigation") || "";
+        } catch (_) {}
+        if (queuedResourceId === String(resourceId)) {
+            try {
+                window.sessionStorage.removeItem("voxora-read-after-navigation");
+            } catch (_) {}
+            window.setTimeout(() => handleReaderCommand("resume"), 0);
+        }
         return () => window.removeEventListener("voxora:reader-command", onCommand);
     }, [resourceId, fingerprint, segments, sections, progress, playbackIndex, reading]);
 

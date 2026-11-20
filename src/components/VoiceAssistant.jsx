@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useLocation, useNavigate } from "react-router-dom";
 import { accountNav, legal, nav, normalizeVoiceText } from "../data/navigation.js";
+import { isDocumentReadCommand } from "../data/reader.js";
 
 const WELCOME_TEXT = "Hello, welcome to Voxora Access. I am Voxora, your voice assistant. I can help you find learning resources, navigate the website, and use its features.";
 
@@ -947,11 +948,26 @@ export default function VoiceAssistant() {
         // the accessible reading route. Other pages retain their page-level
         // reading and heading navigation behaviour.
         const onDocumentReader = /^\/resource\/\d+\/read$/.test(window.location.pathname);
+        const resourceRoute = window.location.pathname.match(/^\/resource\/(\d+)(\/read)?$/);
         const readerCommand = (readerAction, sectionTitle = "") => {
             window.dispatchEvent(new CustomEvent("voxora:reader-command", {
                 detail: { command: readerAction, sectionTitle },
             }));
         };
+        // A document should be read from its structured reading view, not from
+        // the resource page chrome or the embedded PDF preview.
+        const documentReadRequest = isDocumentReadCommand(command);
+        if (resourceRoute && documentReadRequest) {
+            if (onDocumentReader) {
+                readerCommand("resume");
+            } else {
+                try {
+                    window.sessionStorage.setItem("voxora-read-after-navigation", resourceRoute[1]);
+                } catch (_) {}
+                navigate(`/resource/${resourceRoute[1]}/read`);
+            }
+            return;
+        }
         if (onDocumentReader) {
             if (/^(resume reading|continue reading|read document|start reading|read it aloud|read this document|read this page)$/i.test(command)) {
                 readerCommand("resume");

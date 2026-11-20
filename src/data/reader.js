@@ -1,3 +1,8 @@
+export function isDocumentReadCommand(value) {
+    const command = String(value ?? "").toLowerCase().replace(/[.!?]+$/, "").trim();
+    return /^(?:(?:please|can you|could you|would you) )?(?:(?:read|speak)(?: out)? (?:the )?(?:(?:contents? of )?(?:this|the|current|my) )?(?:uploaded )?(?:document|resource|file|pdf|(?:lecture )?notes)(?: out loud for me| aloud for me| out loud| aloud| to me| for me)?|read it(?: aloud for me| out loud| aloud| to me| for me)?|start reading|continue reading|resume reading)$/i.test(command);
+}
+
 const READABLE_BLOCK_TYPES = new Set([
     "heading",
     "paragraph",

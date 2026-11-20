@@ -86,6 +86,96 @@ class ProjectIntegrityTests(unittest.TestCase):
         self.assertIn('request.method == "POST"', ast.get_source_segment(self.backend, csrf_function))
         self.assertIn("secrets.compare_digest", ast.get_source_segment(self.backend, csrf_function))
 
+    def test_assistant_resource_details_fetches_text_after_access_check(self):
+        tool_function = next(
+            node for node in self.backend_ast.body
+            if isinstance(node, ast.FunctionDef) and node.name == "voxora_assistant_tool"
+        )
+        tool_source = ast.get_source_segment(self.backend, tool_function)
+        details_branch = tool_source.split('if name == "get_resource_details":', 1)[1].split(
+            'if name == "save_to_library":', 1
+        )[0]
+        self.assertLess(
+            details_branch.index("if not accessible(row, current_user)"),
+            details_branch.index("timed_fetchone("),
+        )
+        self.assertIn(
+            "SELECT extracted_text, extraction_status FROM resources WHERE id=%s",
+            details_branch,
+        )
+        self.assertNotIn('excerpt = (row["extracted_text"]', details_branch)
+        self.assertNotIn('len(row["extracted_text"]', details_branch)
+        self.assertIn('"extraction_status":', details_branch)
+
+    def test_assistant_resource_details_returns_excerpt_from_separate_reading_query(self):
+        tool_function = next(
+            node for node in self.backend_ast.body
+            if isinstance(node, ast.FunctionDef) and node.name == "voxora_assistant_tool"
+        )
+        namespace = {}
+        module = ast.Module(body=[tool_function], type_ignores=[])
+        exec(compile(module, "<voxora-assistant-tool-test>", "exec"), namespace)
+
+        # This metadata row intentionally has no extracted_text column, matching
+        # the production resource() query.
+        metadata = {
+            "id": 41,
+            "owner_id": 7,
+            "title": "Lecture notes",
+            "description": "Accessible sample resource",
+            "extension": "pdf",
+            "owner_name": "Test Student",
+            "visibility": "private",
+        }
+        reading = {"extracted_text": "x" * 9001, "extraction_status": "partial"}
+        queries = []
+        namespace.update({
+            "resource": lambda resource_id: metadata,
+            "accessible": lambda row, current_user: True,
+            "timed_fetchone": lambda sql, params: queries.append((sql, params)) or reading,
+        })
+
+        result = namespace["voxora_assistant_tool"](
+            "get_resource_details", {"resource_id": 41}, {"id": 7}
+        )
+        self.assertEqual(len(result["text_excerpt"]), 9000)
+        self.assertTrue(result["excerpt_truncated"])
+        self.assertEqual(result["extraction_status"], "partial")
+        self.assertEqual(queries, [(
+            "SELECT extracted_text, extraction_status FROM resources WHERE id=%s",
+            (41,),
+        )])
+
+    def test_assistant_resource_details_does_not_fetch_text_before_access_is_granted(self):
+        tool_function = next(
+            node for node in self.backend_ast.body
+            if isinstance(node, ast.FunctionDef) and node.name == "voxora_assistant_tool"
+        )
+        namespace = {}
+        module = ast.Module(body=[tool_function], type_ignores=[])
+        exec(compile(module, "<voxora-assistant-tool-access-test>", "exec"), namespace)
+        namespace.update({
+            "resource": lambda resource_id: {"id": resource_id},
+            "accessible": lambda row, current_user: False,
+            "timed_fetchone": lambda *args: self.fail("Reading text must not be fetched before access is checked."),
+        })
+        result = namespace["voxora_assistant_tool"](
+            "get_resource_details", {"resource_id": 41}, {"id": 9}
+        )
+        self.assertIn("error", result)
+
+    def test_document_reading_requests_enable_resource_tools(self):
+        assistant_chat = next(
+            node for node in self.backend_ast.body
+            if isinstance(node, ast.FunctionDef) and node.name == "assistant_chat"
+        )
+        source = ast.get_source_segment(self.backend, assistant_chat)
+        self.assertIn("resource_read_intent = bool(re.search(", source)
+        self.assertIn(r"read|summari[sz]e|explain|describe", source)
+        self.assertIn("or resource_read_intent", source)
+        self.assertIn("if resource_intent:", source)
+        self.assertIn("get_resource_details with the numeric resource ID in", source)
+
     def test_voice_assistant_remains_mounted_at_application_root(self):
         self.assertIn("<VoiceAssistant/>", self.entry)
         self.assertIn("/api/assistant/chat", self.voice)
